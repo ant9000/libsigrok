@@ -326,6 +326,12 @@ libsigrok_la_SOURCES += \
 	hardware/zeroplus-logic-cube/protocol.c \
 	hardware/zeroplus-logic-cube/api.c
 endif
+if HW_PICOTECH_PS2000A
+libsigrok_la_SOURCES += \
+	hardware/picotech-ps2000a/protocol.h \
+	hardware/picotech-ps2000a/protocol.c \
+	hardware/picotech-ps2000a/api.c
+endif
 
 libsigrok_la_LIBADD = $(LIBOBJS)
 

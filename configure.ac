@@ -271,6 +271,11 @@ AC_ARG_ENABLE(zeroplus-logic-cube,
 	[HW_ZEROPLUS_LOGIC_CUBE="$enableval"],
 	[HW_ZEROPLUS_LOGIC_CUBE=$HW_ENABLED_DEFAULT])
 
+AC_ARG_ENABLE(picotech-ps2000a, AC_HELP_STRING([--enable-picotech-ps2000a],
+	[enable Picotech PicoScope 2000A support [default=yes]]),
+	[HW_PICOTECH_PS2000A="$enableval"],
+	[HW_PICOTECH_PS2000A=$HW_ENABLED_DEFAULT])
+
 AC_ARG_ENABLE(libserialport,
 	AC_HELP_STRING([--disable-libserialport],
 	[disable libserialport support [default=detect]]))
@@ -636,6 +641,11 @@ if test "x$HW_ZEROPLUS_LOGIC_CUBE" = "xyes"; then
 	AC_DEFINE(HAVE_HW_ZEROPLUS_LOGIC_CUBE, 1, [ZEROPLUS Logic Cube support])
 fi
 
+AM_CONDITIONAL(HW_PICOTECH_PS2000A, test x$HW_PICOTECH_PS2000A = xyes)
+if test "x$HW_PICOTECH_PS2000A" = "xyes"; then
+	AC_DEFINE(HAVE_HW_PICOTECH_PS2000A, 1, [Picotech PicoScope 2000A support])
+fi
+
 # Checks for header files.
 # These are already checked: inttypes.h stdint.h stdlib.h string.h unistd.h.
 
@@ -724,5 +734,6 @@ echo "  - uni-t-dmm....................... $HW_UNI_T_DMM"
 echo "  - uni-t-ut32x..................... $HW_UNI_T_UT32X"
 echo "  - victor-dmm...................... $HW_VICTOR_DMM"
 echo "  - zeroplus-logic-cube............. $HW_ZEROPLUS_LOGIC_CUBE"
+echo "  - picotech-ps2000a................ $HW_PICOTECH_PS2000A"
 echo
 
