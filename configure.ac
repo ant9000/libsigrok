@@ -271,7 +271,7 @@ AC_ARG_ENABLE(zeroplus-logic-cube,
 	[HW_ZEROPLUS_LOGIC_CUBE="$enableval"],
 	[HW_ZEROPLUS_LOGIC_CUBE=$HW_ENABLED_DEFAULT])
 
-AC_ARG_ENABLE(picotech-ps2000a, AC_HELP_STRING([--enable-picotech-ps2000a],
+AC_ARG_ENABLE(picotech_ps2000a, AC_HELP_STRING([--enable-picotech-ps2000a],
 	[enable Picotech PicoScope 2000A support [default=yes]]),
 	[HW_PICOTECH_PS2000A="$enableval"],
 	[HW_PICOTECH_PS2000A=$HW_ENABLED_DEFAULT])
@@ -449,6 +449,36 @@ case "$host" in
 	HW_OLS="no"
 	;;
 esac
+
+if test "x$enable_picotech_ps2000a" != "xno"; then
+    AC_CHECK_LIB([pthread],[pthread_atfork],
+        [LIB_CFLAGS="$LIB_CFLAGS -Wl,-u,pthread_atfork"],
+	[AC_MSG_ERROR([Picotech PS2000A support requested, but pthread_atfork() not found])])
+    AC_ARG_WITH([pico-libs],
+        [AS_HELP_STRING([--with-pico-libs],
+            [location of picoscope libraries])],
+        [pico_libs_path="$withval"],
+        [pico_libs_path="/opt/picoscope/lib"])
+    LDFLAGS=${LDFLAGS}" -L$pico_libs_path"
+    AC_CHECK_LIB([ps2000a], [ps2000aOpenUnit],[],AC_MSG_ERROR([libps2000a missing!]))
+    AC_HEADER_STDC
+    AC_ARG_WITH([pico-headers],
+        [AS_HELP_STRING([--with-pico-headers],
+            [location of picoscope libraries])],
+        [pico_headers_path="$withval"],
+        [pico_headers_path="/opt/picoscope/include"])
+    CFLAGS=${CFLAGS}" -I$pico_headers_path"
+    CPPFLAGS=${CXXFLAGS}" -I$pico_headers_path"
+    AC_CHECK_HEADERS([stdio.h sys/types.h string.h termios.h sys/ioctl.h sys/types.h unistd.h stdlib.h libps2000a-1.1/ps2000aApi.h libps2000a-1.1/PicoStatus.h])
+    if test "$ac_cv_header_libps2000a_1_1_ps2000aApi_h" == no
+    then
+        AC_MSG_ERROR([libps2000a-1.1/ps2000aApi.h missing!])
+    fi
+    if test "$ac_cv_header_libps2000a_1_1_PicoStatus_h" == no
+    then
+        AC_MSG_ERROR([libps2000a-1.1/PicoStatus.h missing!])
+    fi
+fi
 
 AC_SUBST(SR_PKGLIBS)
 
