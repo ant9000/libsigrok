@@ -46,10 +46,12 @@ AH_BOTTOM([#endif /* SR_CONFIG_H */])
 # and enforce use of SR_API to explicitly mark all public API functions.
 COMMON_FLAGS="$CFLAGS -Wall -Wextra -fvisibility=hidden"
 CFLAGS="$COMMON_FLAGS -Wmissing-prototypes"
+CXXFLAGS="-std=c++11 $COMMON_FLAGS"
 
 # Checks for programs.
 AC_PROG_CC
 AC_PROG_CPP
+AC_PROG_CXX
 AC_PROG_INSTALL
 AC_PROG_LN_S
 
@@ -78,203 +80,67 @@ AC_SUBST(SR_LIB_VERSION_AGE)
 AC_SUBST(SR_LIB_VERSION)
 AC_SUBST(SR_LIB_LDFLAGS)
 
-# Hardware support '--enable' options.
-
 AC_ARG_ENABLE(all-drivers, AC_HELP_STRING([--enable-all-drivers],
 	[enable all drivers by default [default=yes]]),
 	[HW_ENABLED_DEFAULT="$enableval"],
 	[HW_ENABLED_DEFAULT="yes"])
 
-AC_ARG_ENABLE(agilent-dmm, AC_HELP_STRING([--enable-agilent-dmm],
-	[enable Agilent DMM support [default=yes]]),
-	[HW_AGILENT_DMM="$enableval"],
-	[HW_AGILENT_DMM=$HW_ENABLED_DEFAULT])
+# Usage: DRIVER([Device name], [driver-name])
+# An optional third argument [no] disables that driver.
+m4_define([driverize], [m4_tolower(m4_bpatsubst([$1], [[^0-9a-zA-Z-]+], [-]))])
+m4_define([upperize], [m4_toupper(m4_bpatsubst([$1], [[^0-9a-zA-Z_]+], [_]))])
+AC_DEFUN([DRIVER], [
+	if test -z "$3"; then
+		default=$HW_ENABLED_DEFAULT
+	else
+		default="$3"
+	fi
+	AC_ARG_ENABLE($2, AC_HELP_STRING([--enable-$2], [enable $1 support]),
+		[m4_join([], [HW_], upperize([$2]))="$enableval"],
+		[m4_join([], [HW_], upperize([$2]))=$default])
+	dots=$(echo -n ".............................." | cut -c 1-$(expr 32 - $(echo -n $2|wc -c)))
+	driver_summary="${driver_summary}  - $2${dots} \${m4_join([], [HW_], upperize([$2]))}@"
+])
 
-AC_ARG_ENABLE(appa-55ii, AC_HELP_STRING([--enable-appa-55ii],
-	[enable APPA 55II support [default=yes]]),
-	[HW_APPA_55II="$enableval"],
-	[HW_APPA_55II=$HW_ENABLED_DEFAULT])
-
-AC_ARG_ENABLE(asix-sigma, AC_HELP_STRING([--enable-asix-sigma],
-	[enable ASIX SIGMA/SIGMA2 support [default=yes]]),
-	[HW_ASIX_SIGMA="$enableval"],
-	[HW_ASIX_SIGMA=$HW_ENABLED_DEFAULT])
-
-AC_ARG_ENABLE(atten-pps3xxx, AC_HELP_STRING([--enable-atten-pps3xxx],
-	[enable Atten PPS3xxx support [default=yes]]),
-	[HW_ATTEN_PPS3XXX="$enableval"],
-	[HW_ATTEN_PPS3XXX=$HW_ENABLED_DEFAULT])
-
-AC_ARG_ENABLE(brymen-bm86x, AC_HELP_STRING([--enable-brymen-bm86x],
-	[enable Brymen BM86X support [default=yes]]),
-	[HW_BRYMEN_BM86X="$enableval"],
-	[HW_BRYMEN_BM86X=$HW_ENABLED_DEFAULT])
-
-AC_ARG_ENABLE(brymen-dmm, AC_HELP_STRING([--enable-brymen-dmm],
-	[enable Brymen DMM support [default=yes]]),
-	[HW_BRYMEN_DMM="$enableval"],
-	[HW_BRYMEN_DMM=$HW_ENABLED_DEFAULT])
-
-AC_ARG_ENABLE(cem-dt-885x, AC_HELP_STRING([--enable-cem-dt-885x],
-	[enable CEM DT-885x support [default=yes]]),
-	[HW_CEM_DT_885X="$enableval"],
-	[HW_CEM_DT_885X=$HW_ENABLED_DEFAULT])
-
-AC_ARG_ENABLE(center-3xx, AC_HELP_STRING([--enable-center-3xx],
-	[enable Center 3xx support [default=yes]]),
-	[HW_CENTER_3XX="$enableval"],
-	[HW_CENTER_3XX=$HW_ENABLED_DEFAULT])
-
-AC_ARG_ENABLE(chronovu-la, AC_HELP_STRING([--enable-chronovu-la],
-	[enable ChronoVu LA support [default=yes]]),
-	[HW_CHRONOVU_LA="$enableval"],
-	[HW_CHRONOVU_LA=$HW_ENABLED_DEFAULT])
-
-AC_ARG_ENABLE(colead-slm, AC_HELP_STRING([--enable-colead-slm],
-	[enable Colead SLM support [default=yes]]),
-	[HW_COLEAD_SLM="$enableval"],
-	[HW_COLEAD_SLM=$HW_ENABLED_DEFAULT])
-
-AC_ARG_ENABLE(conrad-digi-35-cpu, AC_HELP_STRING([--enable-conrad-digi-35-cpu],
-	[enable Conrad DIGI 35 CPU support [default=yes]]),
-	[HW_CONRAD_DIGI_35_CPU="$enableval"],
-	[HW_CONRAD_DIGI_35_CPU=$HW_ENABLED_DEFAULT])
-
-AC_ARG_ENABLE(demo, AC_HELP_STRING([--enable-demo],
-	[enable demo driver support [default=yes]]),
-	[HW_DEMO="$enableval"],
-	[HW_DEMO=$HW_ENABLED_DEFAULT])
-
-AC_ARG_ENABLE(fluke-dmm, AC_HELP_STRING([--enable-fluke-dmm],
-	[enable Fluke DMM support [default=yes]]),
-	[HW_FLUKE_DMM="$enableval"],
-	[HW_FLUKE_DMM=$HW_ENABLED_DEFAULT])
-
-AC_ARG_ENABLE(fx2lafw, AC_HELP_STRING([--enable-fx2lafw],
-	[enable fx2lafw support (for FX2 LAs). [default=yes]]),
-	[HW_FX2LAFW="$enableval"],
-	[HW_FX2LAFW=$HW_ENABLED_DEFAULT])
-
-AC_ARG_ENABLE(gmc-mh-1x-2x, AC_HELP_STRING([--enable-gmc-mh-1x-2x],
-	[enable gmc-mh-1x-2x support [default=yes]]),
-	[HW_GMC_MH_1X_2X="$enableval"],
-	[HW_GMC_MH_1X_2X=$HW_ENABLED_DEFAULT])
-
-AC_ARG_ENABLE(hameg-hmo, AC_HELP_STRING([--enable-hameg-hmo],
-	[enable Hameg HMO support [default=yes]]),
-	[HW_HAMEG_HMO="$enableval"],
-	[HW_HAMEG_HMO=$HW_ENABLED_DEFAULT])
-
-AC_ARG_ENABLE(hantek-dso, AC_HELP_STRING([--enable-hantek-dso],
-	[enable Hantek DSO support [default=yes]]),
-	[HW_HANTEK_DSO="$enableval"],
-	[HW_HANTEK_DSO=$HW_ENABLED_DEFAULT])
-
-AC_ARG_ENABLE(ikalogic-scanalogic2, AC_HELP_STRING([--enable-ikalogic-scanalogic2],
-	[enable IKALOGIC Scanalogic-2 support [default=yes]]),
-	[HW_IKALOGIC_SCANALOGIC2="$enableval"],
-	[HW_IKALOGIC_SCANALOGIC2=$HW_ENABLED_DEFAULT])
-
-AC_ARG_ENABLE(ikalogic-scanaplus, AC_HELP_STRING([--enable-ikalogic-scanaplus],
-	[enable IKALOGIC ScanaPLUS support [default=yes]]),
-	[HW_IKALOGIC_SCANAPLUS="$enableval"],
-	[HW_IKALOGIC_SCANAPLUS=$HW_ENABLED_DEFAULT])
-
-AC_ARG_ENABLE(kecheng-kc-330b, AC_HELP_STRING([--enable-kecheng-kc-330b],
-	[enable Kecheng KC-330B support [default=yes]]),
-	[HW_KECHENG_KC_330B="$enableval"],
-	[HW_KECHENG_KC_330B=$HW_ENABLED_DEFAULT])
-
-AC_ARG_ENABLE(lascar-el-usb, AC_HELP_STRING([--enable-lascar-el-usb],
-	[enable Lascar EL-USB support [default=yes]]),
-	[HW_LASCAR_EL_USB="$enableval"],
-	[HW_LASCAR_EL_USB=$HW_ENABLED_DEFAULT])
-
-AC_ARG_ENABLE(manson-hcs-3xxx, AC_HELP_STRING([--enable-manson-hcs-3xxx],
-	[enable Manson HCS-3xxx support [default=yes]]),
-	[HW_MANSON_HCS_3XXX="$enableval"],
-	[HW_MANSON_HCS_3XXX=$HW_ENABLED_DEFAULT])
-
-AC_ARG_ENABLE(mic-985xx, AC_HELP_STRING([--enable-mic-985xx],
-	[enable MIC 985xx support [default=yes]]),
-	[HW_MIC_985XX="$enableval"],
-	[HW_MIC_985XX=$HW_ENABLED_DEFAULT])
-
-AC_ARG_ENABLE(motech-lps-30x, AC_HELP_STRING([--enable-motech-lps-30x],
-	[enable motech-lps-30x support [default=yes]]),
-	[HW_MOTECH_LPS_30X="$enableval"],
-	[HW_MOTECH_LPS_30X=$HW_ENABLED_DEFAULT])
-
-AC_ARG_ENABLE(norma-dmm, AC_HELP_STRING([--enable-norma-dmm],
-	[enable Norma DMM support [default=yes]]),
-	[HW_NORMA_DMM="$enableval"],
-	[HW_NORMA_DMM=$HW_ENABLED_DEFAULT])
-
-AC_ARG_ENABLE(ols, AC_HELP_STRING([--enable-ols],
-	[enable OpenBench Logic Sniffer (OLS) support [default=yes]]),
-	[HW_OLS="$enableval"],
-	[HW_OLS=$HW_ENABLED_DEFAULT])
-
-AC_ARG_ENABLE(rigol-ds, AC_HELP_STRING([--enable-rigol-ds],
-	[enable Rigol DS support [default=yes]]),
-	[HW_RIGOL_DS="$enableval"],
-	[HW_RIGOL_DS=$HW_ENABLED_DEFAULT])
-
-AC_ARG_ENABLE(saleae-logic16, AC_HELP_STRING([--enable-saleae-logic16],
-	[enable Saleae Logic16 support [default=yes]]),
-	[HW_SALEAE_LOGIC16="$enableval"],
-	[HW_SALEAE_LOGIC16=$HW_ENABLED_DEFAULT])
-
-AC_ARG_ENABLE(serial-dmm, AC_HELP_STRING([--enable-serial-dmm],
-	[enable serial DMM support [default=yes]]),
-	[HW_SERIAL_DMM="$enableval"],
-	[HW_SERIAL_DMM=$HW_ENABLED_DEFAULT])
-
-AC_ARG_ENABLE(sysclk-lwla, AC_HELP_STRING([--enable-sysclk-lwla],
-	[enable Sysclk LWLA support [default=yes]]),
-	[HW_SYSCLK_LWLA="$enableval"],
-	[HW_SYSCLK_LWLA=$HW_ENABLED_DEFAULT])
-
-AC_ARG_ENABLE(teleinfo, AC_HELP_STRING([--enable-teleinfo],
-	[enable Teleinfo support [default=yes]]),
-	[HW_TELEINFO="$enableval"],
-	[HW_TELEINFO=$HW_ENABLED_DEFAULT])
-
-AC_ARG_ENABLE(testo, AC_HELP_STRING([--enable-testo],
-	[enable Testo support [default=yes]]),
-	[HW_TESTO="$enableval"],
-	[HW_TESTO=$HW_ENABLED_DEFAULT])
-
-AC_ARG_ENABLE(tondaj-sl-814, AC_HELP_STRING([--enable-tondaj-sl-814],
-	[enable Tondaj SL-814 support [default=yes]]),
-	[HW_TONDAJ_SL_814="$enableval"],
-	[HW_TONDAJ_SL_814=$HW_ENABLED_DEFAULT])
-
-AC_ARG_ENABLE(uni-t-dmm, AC_HELP_STRING([--enable-uni-t-dmm],
-	[enable UNI-T DMM support [default=yes]]),
-	[HW_UNI_T_DMM="$enableval"],
-	[HW_UNI_T_DMM=$HW_ENABLED_DEFAULT])
-
-AC_ARG_ENABLE(uni-t-ut32x, AC_HELP_STRING([--enable-uni-t-ut32x],
-	[enable UNI-T UT32x support [default=yes]]),
-	[HW_UNI_T_UT32X="$enableval"],
-	[HW_UNI_T_UT32X=$HW_ENABLED_DEFAULT])
-
-AC_ARG_ENABLE(victor-dmm, AC_HELP_STRING([--enable-victor-dmm],
-	[enable victor-dmm support [default=yes]]),
-	[HW_VICTOR_DMM="$enableval"],
-	[HW_VICTOR_DMM=$HW_ENABLED_DEFAULT])
-
-AC_ARG_ENABLE(zeroplus-logic-cube,
-	AC_HELP_STRING([--enable-zeroplus-logic-cube],
-	[enable ZEROPLUS Logic Cube support [default=yes]]),
-	[HW_ZEROPLUS_LOGIC_CUBE="$enableval"],
-	[HW_ZEROPLUS_LOGIC_CUBE=$HW_ENABLED_DEFAULT])
-
-AC_ARG_ENABLE(picotech_ps2000a, AC_HELP_STRING([--enable-picotech-ps2000a],
-	[enable Picotech PicoScope 2000A support [default=yes]]),
-	[HW_PICOTECH_PS2000A="$enableval"],
-	[HW_PICOTECH_PS2000A=$HW_ENABLED_DEFAULT])
+DRIVER([Agilent DMM], [agilent-dmm])
+DRIVER([Appa 55II], [appa-55ii])
+DRIVER([ASIX SIGMA/SIGMA2], [asix-sigma])
+DRIVER([Atten PPS3xxx], [atten-pps3xxx])
+DRIVER([BeagleLogic], [beaglelogic])
+DRIVER([Brymen BM86x], [brymen-bm86x])
+DRIVER([Brymen DMM], [brymen-dmm])
+DRIVER([CEM DT-885x], [cem-dt-885x])
+DRIVER([Center 3xx], [center-3xx])
+DRIVER([ChronoVu LA], [chronovu-la])
+DRIVER([Colead SLM], [colead-slm])
+DRIVER([Conrad DIGI 35 CPU], [conrad-digi-35-cpu])
+DRIVER([demo], [demo])
+DRIVER([Fluke DMM], [fluke-dmm])
+DRIVER([fx2lafw], [fx2lafw])
+DRIVER([GMC MH 1x/2x], [gmc-mh-1x-2x])
+DRIVER([Hameg HMO], [hameg-hmo])
+DRIVER([Hantek DSO], [hantek-dso])
+DRIVER([Ikalogic Scanalogic-2], [ikalogic-scanalogic2])
+DRIVER([Ikalogic Scanaplus], [ikalogic-scanaplus])
+DRIVER([Kecheng KC-330B], [kecheng-kc-330b])
+DRIVER([Lascar EL-USB], [lascar-el-usb])
+DRIVER([Manson HCS-3xxx], [manson-hcs-3xxx])
+DRIVER([MIC 985xx], [mic-985xx])
+DRIVER([Motech LPS 30x], [motech-lps-30x])
+DRIVER([Norma DMM], [norma-dmm])
+DRIVER([OpenBench Logic Sniffer], [openbench-logic-sniffer])
+DRIVER([Rigol DS], [rigol-ds])
+DRIVER([Saleae Logic16], [saleae-logic16])
+DRIVER([serial DMM], [serial-dmm])
+DRIVER([Sysclk LWLA], [sysclk-lwla])
+DRIVER([Teleinfo], [teleinfo])
+DRIVER([Testo], [testo])
+DRIVER([Tondaj SL-814], [tondaj-sl-814])
+DRIVER([UNI-T DMM], [uni-t-dmm])
+DRIVER([UNI-T UT32x], [uni-t-ut32x])
+DRIVER([Victor DMM], [victor-dmm])
+DRIVER([ZEROPLUS Logic Cube], [zeroplus-logic-cube])
+DRIVER([Picotech PicoScope 2000A], [picotech-ps2000a])
 
 AC_ARG_ENABLE(libserialport,
 	AC_HELP_STRING([--disable-libserialport],
@@ -287,6 +153,81 @@ AC_ARG_ENABLE(libftdi,
 AC_ARG_ENABLE(libusb,
 	AC_HELP_STRING([--disable-libusb],
 	[disable libusb support [default=detect]]))
+
+# Language binding '--enable' options
+
+AC_ARG_ENABLE(bindings,
+	AC_HELP_STRING([--enable-bindings],
+	[build language bindings [default=yes]]),
+	[BINDINGS_ALL="$enableval"], [BINDINGS_ALL="yes"])
+
+AC_ARG_ENABLE(cxx,
+	AC_HELP_STRING([--enable-cxx],
+	[build C++ bindings [default=yes]]),
+	[BINDINGS_CXX="$enableval"], [BINDINGS_CXX=$BINDINGS_ALL])
+
+AC_ARG_ENABLE(python,
+	AC_HELP_STRING([--enable-python],
+	[build Python bindings [default=yes]]),
+	[BINDINGS_PYTHON="$enableval"], [BINDINGS_PYTHON=$BINDINGS_ALL])
+
+AC_ARG_ENABLE(java,
+	AC_HELP_STRING([--enable-java],
+	[build Java bindings [default=yes]]),
+	[BINDINGS_JAVA="$enableval"], [BINDINGS_JAVA=$BINDINGS_ALL])
+
+AC_ARG_WITH(jni-include-path,
+	AC_HELP_STRING([--with-jni-include-path=path],
+	[specify include path for JNI [default=autodetect]]),
+	[JNI_INCLUDE_DIRS="$withval"], [JNI_INCLUDE_DIRS=auto])
+
+# Check if the C++ compiler supports the C++11 standard.
+
+m4_ifdef([AX_CXX_COMPILE_STDCXX_11], [AX_CXX_COMPILE_STDCXX_11(,[optional])],
+	[AC_MSG_NOTICE([Missing macro m4_toupper(aX_CXX_COMPILE_STDCXX_11), no C++11 check])])
+
+if test "x$HAVE_CXX11" != "x1"; then
+	BINDINGS_CXX="no"; cxx_msg="C++11 compiler required"
+fi
+
+# The C++ bindings use doxygen to parse libsigrok symbols.
+AC_CHECK_PROG([HAVE_DOXYGEN], [doxygen], [yes])
+if test "x$HAVE_DOXYGEN" != "xyes"; then
+	BINDINGS_CXX="no"; cxx_msg="doxygen required"
+fi
+
+# Python is needed for the C++ bindings.
+AC_CHECK_PROG([HAVE_PYTHON], [python], [yes])
+if test "x$HAVE_PYTHON" != "xyes"; then
+	BINDINGS_CXX="no"; cxx_msg="Python required"
+fi
+
+# The Python bindings need Python development files
+PKG_CHECK_MODULES([python], [python >= 2.7],
+        [CXXFLAGS="$CXXFLAGS $python_CFLAGS";
+        CXXLIBS="$CXXLIBS $python_LIBS"],
+[PKG_CHECK_MODULES([python27], [python-2.7 >= 2.7],
+        [CXXFLAGS="$CXXFLAGS $python27_CFLAGS";
+        CXXLIBS="$CXXLIBS $python27_LIBS"],
+		[BINDINGS_PYTHON="no"; python_msg="Python headers required"])])
+
+# The Python bindings need the setuptools Python module.
+m4_ifdef([AX_PYTHON_MODULE], [AX_PYTHON_MODULE([setuptools])],
+	# We'll let it go through even if the macro wasn't found, the python
+	# module may still be there.
+	[HAVE_PYTHON_SETUPTOOLS="yes";
+		AC_MSG_NOTICE([Missing macro m4_toupper(aX_PYTHON_MODULE), no setuptools check])]
+)
+if test "x$HAVE_PYMOD_SETUPTOOLS" != "xyes"; then
+	BINDINGS_PYTHON="no"; python_msg="Python setuptools module required"
+fi
+
+# The Python and Java bindings use swig to generate code.
+AC_CHECK_PROG([HAVE_SWIG], [swig], [yes])
+if test "x$HAVE_SWIG" != "xyes"; then
+	BINDINGS_PYTHON="no"; python_msg="swig required"
+	BINDINGS_JAVA="no"; java_msg="swig required"
+fi
 
 # Checks for libraries.
 
@@ -330,7 +271,7 @@ PKG_CHECK_MODULES([libzip], [libzip >= 0.10],
 # libserialport is only needed for some hardware drivers. Disable the
 # respective drivers if it is not found.
 if test "x$enable_libserialport" != "xno"; then
-	PKG_CHECK_MODULES([libserialport], [libserialport >= 0.1.0],
+	PKG_CHECK_MODULES([libserialport], [libserialport >= 0.2.0],
 		[have_libserialport="yes"; LIB_CFLAGS="$LIB_CFLAGS $libserialport_CFLAGS";
 		LIBS="$LIBS $libserialport_LIBS";
 		SR_PKGLIBS="$SR_PKGLIBS libserialport"],
@@ -349,8 +290,8 @@ if test "x$have_libserialport" = "xno"; then
 	HW_CENTER_3XX="no"; HW_COLEAD_SLM="no"; HW_CONRAD_DIGI_35_CPU="no";
 	HW_FLUKE_DMM="no"; HW_GMC_MH_1X_2X="no"; HW_HAMEG_HMO="no";
 	HW_MANSON_HCS_3XXX="no"; HW_MIC_985XX="no"; HW_MOTECH_LPS_30X="no";
-	HW_NORMA_DMM="no"; HW_OLS="no"; HW_SERIAL_DMM="no"; HW_TELEINFO="no";
-	HW_TONDAJ_SL_814="no";
+	HW_NORMA_DMM="no"; HW_OPENBENCH_LOGIC_SNIFFER="no"; HW_SERIAL_DMM="no";
+	HW_TELEINFO="no"; HW_TONDAJ_SL_814="no";
 else
 	AC_DEFINE_UNQUOTED(HAVE_LIBSERIALPORT, [1],
 		[Specifies whether we have libserialport.])
@@ -437,6 +378,22 @@ if test "x$have_libftdi" = "xno"; then
 	HW_ASIX_SIGMA="no"; HW_CHRONOVU_LA="no"; HW_IKALOGIC_SCANAPLUS="no";
 fi
 
+# glibmm-2.4 is needed for the C++ bindings.
+PKG_CHECK_MODULES([glibmm], [glibmm-2.4 >= 2.32.0],
+	[CXXFLAGS="$CXXFLAGS $glibmm_CFLAGS";
+	CXXLIBS="$CXXLIBS $glibmm_LIBS"],
+	[BINDINGS_CXX="no"; cxx_msg="glibmm required"])
+
+# PyGObject is needed for the Python bindings.
+PKG_CHECK_MODULES([pygobject], [pygobject-3.0 >= 3.0.0],
+        [CXXFLAGS="$CXXFLAGS $pygobject_CFLAGS";
+        CXXLIBS="$CXXLIBS $pygobject_LIBS";
+	PKG_CHECK_MODULES([pygobject_3_7_91], [pygobject-3.0 >= 3.7.91],
+		[pyg_flags_signed=0], [pyg_flags_signed=1]);
+	AC_DEFINE_UNQUOTED(PYGOBJECT_FLAGS_SIGNED, [$pyg_flags_signed],
+		[Whether last argument to pyg_flags_get_value() is signed])],
+	[BINDINGS_PYTHON="no"; python_msg="Python pygobject module required"])
+
 # The Check unit testing framework is optional. Disable if not found.
 PKG_CHECK_MODULES([check], [check >= 0.9.4],
 	[have_check="yes"], [have_check="no"])
@@ -446,9 +403,13 @@ AM_CONDITIONAL(HAVE_CHECK, test x"$have_check" = "xyes")
 # will not currently work on Windows.
 case "$host" in
 *mingw*)
-	HW_OLS="no"
+	HW_OPENBENCH_LOGIC_SNIFFER="no"
 	;;
 esac
+
+# The BeagleLogic driver needs sys/mman.h and sys/ioctl.h. Don't try to
+# build it if these headers aren't available.
+AC_CHECK_HEADERS([sys/mman.h sys/ioctl.h], [], [HW_BEAGLELOGIC="no"])
 
 if test "x$enable_picotech_ps2000a" != "xno"; then
     AC_CHECK_LIB([pthread],[pthread_atfork],
@@ -482,7 +443,37 @@ fi
 
 AC_SUBST(SR_PKGLIBS)
 
-CFLAGS="$CFLAGS $LIB_CFLAGS"
+CFLAGS="$CFLAGS -Iinclude/libsigrok -I${srcdir}/include/libsigrok $LIB_CFLAGS"
+CXXFLAGS="$CXXFLAGS -Iinclude/libsigrok -I${srcdir}/include -Ibindings/cxx -Ibindings/cxx/include/libsigrok -I${srcdir}/bindings/cxx/include $LIB_CFLAGS"
+
+# Find Java compiler and JNI includes for Java bindings.
+
+AC_CHECK_PROG([HAVE_JAVAC], [javac], [yes], [no])
+
+if test "x$HAVE_JAVAC" = "xyes"; then
+	AX_PROG_JAVAC
+	if test "x$JNI_INCLUDE_DIRS" = "xauto"; then
+		if test "x$cross_compiling" = "xyes"; then
+			JNI_INCLUDE_DIRS=
+		else
+			AX_JNI_INCLUDE_DIR
+		fi
+	fi
+	for JNI_INCLUDE_DIR in $JNI_INCLUDE_DIRS; do
+		CXXFLAGS="$CXXFLAGS -I$JNI_INCLUDE_DIR"
+	done
+	AC_LANG_PUSH([C++])
+	AC_CHECK_HEADERS([jni.h], [], [BINDINGS_JAVA="no"; java_msg="Java JNI headers required"])
+	AC_LANG_POP([C++])
+else
+	BINDINGS_JAVA="no"; java_msg="Java compiler required"
+fi
+
+# Python and Java bindings depend on C++ bindings.
+if test "x$BINDINGS_CXX" != "xyes"; then
+	BINDINGS_PYTHON="no"; python_msg="C++ bindings required"
+	BINDINGS_JAVA="no"; java_msg="C++ bindings required"
+fi
 
 # Now set AM_CONDITIONALs and AC_DEFINEs for the enabled/disabled drivers.
 
@@ -504,6 +495,11 @@ fi
 AM_CONDITIONAL(HW_ATTEN_PPS3XXX, test x$HW_ATTEN_PPS3XXX = xyes)
 if test "x$HW_ATTEN_PPS3XXX" = "xyes"; then
 	AC_DEFINE(HAVE_HW_ATTEN_PPS3XXX, 1, [Atten PPS3xxx support])
+fi
+
+AM_CONDITIONAL(HW_BEAGLELOGIC, test x$HW_BEAGLELOGIC = xyes)
+if test "x$HW_BEAGLELOGIC" = "xyes"; then
+	AC_DEFINE(HAVE_HW_BEAGLELOGIC, 1, [BeagleLogic support])
 fi
 
 AM_CONDITIONAL(HW_BRYMEN_BM86X, test x$HW_BRYMEN_BM86X = xyes)
@@ -611,9 +607,9 @@ if test "x$HW_NORMA_DMM" = "xyes"; then
 	AC_DEFINE(HAVE_HW_NORMA_DMM, 1, [Norma DMM support])
 fi
 
-AM_CONDITIONAL(HW_OLS, test x$HW_OLS = xyes)
-if test "x$HW_OLS" = "xyes"; then
-	AC_DEFINE(HAVE_HW_OLS, 1, [OpenBench Logic Sniffer (OLS) support])
+AM_CONDITIONAL(HW_OPENBENCH_LOGIC_SNIFFER, test x$HW_OPENBENCH_LOGIC_SNIFFER = xyes)
+if test "x$HW_OPENBENCH_LOGIC_SNIFFER" = "xyes"; then
+	AC_DEFINE(HAVE_HW_OPENBENCH_LOGIC_SNIFFER, 1, [OpenBench Logic Sniffer (OLS) support])
 fi
 
 AM_CONDITIONAL(HW_RIGOL_DS, test x$HW_RIGOL_DS = xyes)
@@ -676,8 +672,15 @@ if test "x$HW_PICOTECH_PS2000A" = "xyes"; then
 	AC_DEFINE(HAVE_HW_PICOTECH_PS2000A, 1, [Picotech PicoScope 2000A support])
 fi
 
+AM_CONDITIONAL(BINDINGS_CXX, test x$BINDINGS_CXX = xyes)
+
+AM_CONDITIONAL(BINDINGS_PYTHON, test x$BINDINGS_PYTHON = xyes)
+
+AM_CONDITIONAL(BINDINGS_JAVA, test x$BINDINGS_JAVA = xyes)
+
 # Checks for header files.
-# These are already checked: inttypes.h stdint.h stdlib.h string.h unistd.h.
+# These are already implicitly checked: inttypes.h stdint.h stdlib.h string.h
+# unistd.h memory.h strings.h dlfcn.h sys/types.h sys/stat.h.
 
 # Checks for typedefs, structures, and compiler characteristics.
 AC_C_BIGENDIAN
@@ -696,7 +699,8 @@ AC_SUBST(SR_PACKAGE_VERSION_MINOR)
 AC_SUBST(SR_PACKAGE_VERSION_MICRO)
 AC_SUBST(SR_PACKAGE_VERSION)
 
-AC_CONFIG_FILES([Makefile version.h libsigrok.pc])
+AC_CONFIG_FILES([Makefile include/libsigrok/version.h libsigrok.pc
+	bindings/cxx/libsigrokxx.pc])
 
 AC_OUTPUT
 
@@ -713,7 +717,7 @@ echo "Detected libraries:"
 echo
 
 # Note: This only works for libs with pkg-config integration.
-for lib in "glib-2.0 >= 2.32.0" "libzip >= 0.10" "libserialport >= 0.1.0" "librevisa >= 0.0.20130812" "libusb-1.0 >= 1.0.16" "libftdi >= 0.16" "libftdi1 >= 1.0" "check >= 0.9.4"; do
+for lib in "glib-2.0 >= 2.32.0" "libzip >= 0.10" "libserialport >= 0.2.0" "librevisa >= 0.0.20130812" "libusb-1.0 >= 1.0.16" "libftdi >= 0.16" "libftdi1 >= 1.0" "glibmm-2.4 >= 2.32.0" "pygobject-3.0 >= 3.0.0" "check >= 0.9.4"; do
 	optional="OPTIONAL"
 	if test "x$lib" = "xglib-2.0 >= 2.32.0"; then optional="REQUIRED"; fi
 	if test "x$lib" = "xlibzip >= 0.10"; then optional="REQUIRED"; fi
@@ -726,44 +730,36 @@ for lib in "glib-2.0 >= 2.32.0" "libzip >= 0.10" "libserialport >= 0.1.0" "libre
 	echo "  - ($optional) $lib: $answer"
 done
 
-echo -e "\nEnabled hardware drivers:\n"
-echo "  - agilent-dmm..................... $HW_AGILENT_DMM"
-echo "  - appa-55ii....................... $HW_APPA_55II"
-echo "  - asix-sigma...................... $HW_ASIX_SIGMA"
-echo "  - atten-pps3xxx................... $HW_ATTEN_PPS3XXX"
-echo "  - brymen-bm86x.................... $HW_BRYMEN_BM86X"
-echo "  - brymen-dmm...................... $HW_BRYMEN_DMM"
-echo "  - cem-dt-885x..................... $HW_CEM_DT_885X"
-echo "  - center-3xx...................... $HW_CENTER_3XX"
-echo "  - chronovu-la..................... $HW_CHRONOVU_LA"
-echo "  - colead-slm...................... $HW_COLEAD_SLM"
-echo "  - conrad-digi-35-cpu.............. $HW_CONRAD_DIGI_35_CPU"
-echo "  - demo............................ $HW_DEMO"
-echo "  - fluke-dmm....................... $HW_FLUKE_DMM"
-echo "  - fx2lafw......................... $HW_FX2LAFW"
-echo "  - gmc-mh-1x-2x.................... $HW_GMC_MH_1X_2X"
-echo "  - hameg-hmo....................... $HW_HAMEG_HMO"
-echo "  - hantek-dso...................... $HW_HANTEK_DSO"
-echo "  - ikalogic-scanalogic2............ $HW_IKALOGIC_SCANALOGIC2"
-echo "  - ikalogic-scanaplus.............. $HW_IKALOGIC_SCANAPLUS"
-echo "  - kecheng-kc-330b................. $HW_KECHENG_KC_330B"
-echo "  - lascar-el-usb................... $HW_LASCAR_EL_USB"
-echo "  - manson-hcs-3xxx................. $HW_MANSON_HCS_3XXX"
-echo "  - mic-985xx....................... $HW_MIC_985XX"
-echo "  - motech-lps-30x.................. $HW_MOTECH_LPS_30X"
-echo "  - norma-dmm....................... $HW_NORMA_DMM"
-echo "  - openbench-logic-sniffer......... $HW_OLS"
-echo "  - rigol-ds........................ $HW_RIGOL_DS"
-echo "  - saleae-logic16.................. $HW_SALEAE_LOGIC16"
-echo "  - serial-dmm...................... $HW_SERIAL_DMM"
-echo "  - sysclk-lwla..................... $HW_SYSCLK_LWLA"
-echo "  - teleinfo........................ $HW_TELEINFO"
-echo "  - testo........................... $HW_TESTO"
-echo "  - tondaj-sl-814................... $HW_TONDAJ_SL_814"
-echo "  - uni-t-dmm....................... $HW_UNI_T_DMM"
-echo "  - uni-t-ut32x..................... $HW_UNI_T_UT32X"
-echo "  - victor-dmm...................... $HW_VICTOR_DMM"
-echo "  - zeroplus-logic-cube............. $HW_ZEROPLUS_LOGIC_CUBE"
-echo "  - picotech-ps2000a................ $HW_PICOTECH_PS2000A"
-echo
+eval echo -e "@Enabled hardware drivers:@@${driver_summary}" | tr @ \\n
 
+# Prepare final bindings report messages
+final_cxx=""
+final_python=""
+final_java=""
+if test "$enable_bindings" = "no"; then
+	final_cxx=" (disabled)"
+	final_python=" (disabled)"
+	final_java=" (disabled)"
+else
+	if test "$enable_cxx" = "no"; then
+		final_cxx=" (disabled)"
+	elif test "$BINDINGS_CXX" = "no"; then
+		final_cxx=" ($cxx_msg)"
+	fi
+	if test "$enable_python" = "no"; then
+		final_python=" (disabled)"
+	elif test "$BINDINGS_PYTHON" = "no"; then
+		final_python=" ($python_msg)"
+	fi
+	if test "$enable_java" = "no"; then
+		final_java=" (disabled)"
+	elif test "$BINDINGS_JAVA" = "no"; then
+		final_java=" ($java_msg)"
+	fi
+fi
+
+echo -e "Enabled language bindings:\n"
+echo " - C++............................. $BINDINGS_CXX$final_cxx"
+echo " - Python.......................... $BINDINGS_PYTHON$final_python"
+echo " - Java............................ $BINDINGS_JAVA$final_java"
+echo

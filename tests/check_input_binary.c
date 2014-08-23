@@ -20,7 +20,7 @@
 
 #include <check.h>
 #include <glib/gstdio.h>
-#include "../libsigrok.h"
+#include "../include/libsigrok/libsigrok.h"
 #include "lib.h"
 
 #define FILENAME		"foo.dat"
@@ -30,30 +30,12 @@
 #define CHECK_ALL_HIGH		1
 #define CHECK_HELLO_WORLD	2
 
-static struct sr_context *sr_ctx;
-
 static uint64_t df_packet_counter = 0, sample_counter = 0;
 static gboolean have_seen_df_end = FALSE;
 static GArray *logic_channellist = NULL;
 static int check_to_perform;
 static uint64_t expected_samples;
 static uint64_t *expected_samplerate;
-
-static void setup(void)
-{
-	int ret;
-
-	ret = sr_init(&sr_ctx);
-	fail_unless(ret == SR_OK, "sr_init() failed: %d.", ret);
-}
-
-static void teardown(void)
-{
-	int ret;
-
-	ret = sr_exit(sr_ctx);
-	fail_unless(ret == SR_OK, "sr_exit() failed: %d.", ret);
-}
 
 static void check_all_low(const struct sr_datafeed_logic *logic)
 {
@@ -204,6 +186,7 @@ static void check_buf(const char *filename, GHashTable *param,
 	int ret;
 	struct sr_input *in;
 	struct sr_input_format *in_format;
+	struct sr_session *session;
 
 	/* Initialize global variables for this run. */
 	df_packet_counter = sample_counter = 0;
@@ -226,11 +209,11 @@ static void check_buf(const char *filename, GHashTable *param,
 	ret = in->format->init(in, filename);
 	fail_unless(ret == SR_OK, "Input format init error: %d", ret);
 	
-	sr_session_new();
-	sr_session_datafeed_callback_add(datafeed_in, NULL);
-	sr_session_dev_add(in->sdi);
+	sr_session_new(&session);
+	sr_session_datafeed_callback_add(session, datafeed_in, NULL);
+	sr_session_dev_add(session, in->sdi);
 	in_format->loadfile(in, filename);
-	sr_session_destroy();
+	sr_session_destroy(session);
 
 	g_unlink(filename); /* Delete file again. */
 }
@@ -324,7 +307,7 @@ Suite *suite_input_binary(void)
 	s = suite_create("input-binary");
 
 	tc = tcase_create("basic");
-	tcase_add_checked_fixture(tc, setup, teardown);
+	tcase_add_checked_fixture(tc, srtest_setup, srtest_teardown);
 	tcase_add_test(tc, test_input_binary_all_low);
 	tcase_add_test(tc, test_input_binary_all_high);
 	tcase_add_loop_test(tc, test_input_binary_all_high_loop, 0, 10);

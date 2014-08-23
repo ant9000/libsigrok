@@ -20,7 +20,7 @@
 
 #include <stdlib.h>
 #include <check.h>
-#include "../libsigrok.h"
+#include "../include/libsigrok/libsigrok.h"
 #include "lib.h"
 
 int main(void)
@@ -38,6 +38,7 @@ int main(void)
 	srunner_add_suite(srunner, suite_input_all());
 	srunner_add_suite(srunner, suite_input_binary());
 	srunner_add_suite(srunner, suite_output_all());
+	srunner_add_suite(srunner, suite_session());
 	srunner_add_suite(srunner, suite_strutil());
 	srunner_add_suite(srunner, suite_version());
 

@@ -23,8 +23,26 @@
 #include <glib.h>
 #include <glib/gstdio.h>
 #include <check.h>
-#include "../libsigrok.h"
+#include "../include/libsigrok/libsigrok.h"
 #include "lib.h"
+
+struct sr_context *srtest_ctx;
+
+void srtest_setup(void)
+{
+	int ret;
+
+	ret = sr_init(&srtest_ctx);
+	fail_unless(ret == SR_OK, "sr_init() failed: %d.", ret);
+}
+
+void srtest_teardown(void)
+{
+	int ret;
+
+	ret = sr_exit(srtest_ctx);
+	fail_unless(ret == SR_OK, "sr_exit() failed: %d.", ret);
+}
 
 /* Get a libsigrok driver by name. */
 struct sr_dev_driver *srtest_driver_get(const char *drivername)
@@ -62,25 +80,6 @@ struct sr_input_format *srtest_input_get(const char *id)
 	fail_unless(input != NULL, "Input module '%s' not found.", id);
 
 	return input;
-}
-
-/* Get a libsigrok output format by ID. */
-struct sr_output_format *srtest_output_get(const char *id)
-{
-	struct sr_output_format **outputs, *output = NULL;
-	int i;
-
-	outputs = sr_output_list();
-	fail_unless(outputs != NULL, "No output modules found.");
-
-	for (i = 0; outputs[i]; i++) {
-		if (strcmp(outputs[i]->id, id))
-			continue;
-		output = outputs[i];
-	}
-	fail_unless(output != NULL, "Output module '%s' not found.", id);
-
-	return output;
 }
 
 /* Initialize a libsigrok driver. */

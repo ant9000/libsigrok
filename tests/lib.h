@@ -21,11 +21,15 @@
 #ifndef LIBSIGROK_TESTS_LIB_H
 #define LIBSIGROK_TESTS_LIB_H
 
-#include "../libsigrok.h"
+#include "../include/libsigrok/libsigrok.h"
+
+extern struct sr_context *srtest_ctx;
+
+void srtest_setup(void);
+void srtest_teardown(void);
 
 struct sr_dev_driver *srtest_driver_get(const char *drivername);
 struct sr_input_format *srtest_input_get(const char *id);
-struct sr_output_format *srtest_output_get(const char *id);
 
 void srtest_driver_init(struct sr_context *sr_ctx, struct sr_dev_driver *driver);
 void srtest_driver_init_all(struct sr_context *sr_ctx);
@@ -46,6 +50,7 @@ Suite *suite_driver_all(void);
 Suite *suite_input_all(void);
 Suite *suite_input_binary(void);
 Suite *suite_output_all(void);
+Suite *suite_session(void);
 Suite *suite_strutil(void);
 Suite *suite_version(void);
 
