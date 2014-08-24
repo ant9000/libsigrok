@@ -109,6 +109,9 @@ extern SR_PRIV struct sr_dev_driver siemens_b102x_driver_info;
 #ifdef HAVE_HW_OPENBENCH_LOGIC_SNIFFER
 extern SR_PRIV struct sr_dev_driver ols_driver_info;
 #endif
+#ifdef HAVE_HW_PICOTECH_PS2000A
+extern SR_PRIV struct sr_dev_driver picotech_ps2000a_driver_info;
+#endif
 #ifdef HAVE_HW_RIGOL_DS
 extern SR_PRIV struct sr_dev_driver rigol_ds_driver_info;
 #endif
@@ -276,6 +279,9 @@ SR_PRIV struct sr_dev_driver *drivers_list[] = {
 #endif
 #ifdef HAVE_HW_OPENBENCH_LOGIC_SNIFFER
 	&ols_driver_info,
+#endif
+#ifdef HAVE_HW_PICOTECH_PS2000A
+	&picotech_ps2000a_driver_info,
 #endif
 #ifdef HAVE_HW_RIGOL_DS
 	&rigol_ds_driver_info,
