@@ -32,6 +32,10 @@
 /*
 defs here
 */
+static const int32_t hwcaps[] = {
+        SR_CONF_SAMPLERATE,
+};
+
 
 SR_PRIV struct sr_dev_driver picotech_ps2000a_driver_info;
 static struct sr_dev_driver *di = &picotech_ps2000a_driver_info;
@@ -41,14 +45,9 @@ static int init(struct sr_context *sr_ctx)
         return std_init(sr_ctx, di, LOG_PREFIX);
 }
 
-static void clear_helper(void *priv)
-{
-        // TODO
-}
-
 static int dev_clear(void)
 {
-        return std_dev_clear(di, clear_helper);
+        return std_dev_clear(di, NULL);
 }
 
 static int cleanup(void)
@@ -56,15 +55,10 @@ static int cleanup(void)
         return dev_clear();
 }
 
-static struct sr_dev_inst *probe_device(struct sr_scpi_dev_inst *scpi)
+static GSList *scan(GSList *options)
 {
         // TODO
         return NULL;
-}
-
-static GSList *scan(GSList *options)
-{
-        return sr_scpi_scan(di->priv, options, probe_device);
 }
 
 
@@ -103,6 +97,14 @@ static int config_list(int key, GVariant **data, const struct sr_dev_inst *sdi,
                 const struct sr_channel_group *cg)
 {
         // TODO
+        switch (key) {
+        case SR_CONF_DEVICE_OPTIONS:
+                *data = g_variant_new_fixed_array(G_VARIANT_TYPE_INT32,
+                                hwcaps, ARRAY_SIZE(hwcaps), sizeof(int32_t));
+                break;
+        default:
+                return SR_ERR_NA;
+        }
         return SR_OK;
 }
 
