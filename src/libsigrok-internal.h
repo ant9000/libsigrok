@@ -51,32 +51,41 @@
 #endif
 
 /**
- * Read a 8 bits integer out of memory.
+ * Read a 8 bits unsigned integer out of memory.
  * @param x a pointer to the input memory
- * @return the corresponding integer
+ * @return the corresponding unsigned integer
  */
 #define R8(x)     ((unsigned)((const uint8_t*)(x))[0])
 
 /**
- * Read a 16 bits big endian integer out of memory.
+ * Read a 16 bits big endian unsigned integer out of memory.
  * @param x a pointer to the input memory
- * @return the corresponding integer
+ * @return the corresponding unsigned integer
  */
 #define RB16(x)  (((unsigned)((const uint8_t*)(x))[0] <<  8) |  \
                    (unsigned)((const uint8_t*)(x))[1])
 
 /**
- * Read a 16 bits little endian integer out of memory.
+ * Read a 16 bits little endian unsigned integer out of memory.
  * @param x a pointer to the input memory
- * @return the corresponding integer
+ * @return the corresponding unsigned integer
  */
 #define RL16(x)  (((unsigned)((const uint8_t*)(x))[1] <<  8) | \
                    (unsigned)((const uint8_t*)(x))[0])
 
 /**
- * Read a 32 bits big endian integer out of memory.
+ * Read a 16 bits little endian signed integer out of memory.
  * @param x a pointer to the input memory
- * @return the corresponding integer
+ * @return the corresponding signed integer
+ */
+#define RL16S(x)  ((int16_t) \
+		          (((unsigned)((const uint8_t*)(x))[1] <<  8) | \
+                    (unsigned)((const uint8_t*)(x))[0]))
+
+/**
+ * Read a 32 bits big endian unsigned integer out of memory.
+ * @param x a pointer to the input memory
+ * @return the corresponding unsigned integer
  */
 #define RB32(x)  (((unsigned)((const uint8_t*)(x))[0] << 24) | \
                   ((unsigned)((const uint8_t*)(x))[1] << 16) |  \
@@ -84,9 +93,9 @@
                    (unsigned)((const uint8_t*)(x))[3])
 
 /**
- * Read a 32 bits little endian integer out of memory.
+ * Read a 32 bits little endian unsigned integer out of memory.
  * @param x a pointer to the input memory
- * @return the corresponding integer
+ * @return the corresponding unsigned integer
  */
 #define RL32(x)  (((unsigned)((const uint8_t*)(x))[3] << 24) | \
                   ((unsigned)((const uint8_t*)(x))[2] << 16) |  \
@@ -94,32 +103,43 @@
                    (unsigned)((const uint8_t*)(x))[0])
 
 /**
- * Write a 8 bits integer to memory.
+ * Read a 32 bits little endian signed integer out of memory.
+ * @param x a pointer to the input memory
+ * @return the corresponding signed integer
+ */
+#define RL32S(x)  ((int32_t) \
+                 (((unsigned)((const uint8_t*)(x))[3] << 24) | \
+                  ((unsigned)((const uint8_t*)(x))[2] << 16) |  \
+                  ((unsigned)((const uint8_t*)(x))[1] <<  8) |  \
+                   (unsigned)((const uint8_t*)(x))[0]))
+
+/**
+ * Write a 8 bits unsigned integer to memory.
  * @param p a pointer to the output memory
- * @param x the input integer
+ * @param x the input unsigned integer
  */
 #define W8(p, x)    do { ((uint8_t*)(p))[0] = (uint8_t) (x);      } while(0)
 
 /**
- * Write a 16 bits integer to memory stored as big endian.
+ * Write a 16 bits unsigned integer to memory stored as big endian.
  * @param p a pointer to the output memory
- * @param x the input integer
+ * @param x the input unsigned integer
  */
 #define WB16(p, x)  do { ((uint8_t*)(p))[1] = (uint8_t) (x);      \
                          ((uint8_t*)(p))[0] = (uint8_t)((x)>>8);  } while(0)
 
 /**
- * Write a 16 bits integer to memory stored as little endian.
+ * Write a 16 bits unsigned integer to memory stored as little endian.
  * @param p a pointer to the output memory
- * @param x the input integer
+ * @param x the input unsigned integer
  */
 #define WL16(p, x)  do { ((uint8_t*)(p))[0] = (uint8_t) (x);      \
                          ((uint8_t*)(p))[1] = (uint8_t)((x)>>8);  } while(0)
 
 /**
- * Write a 32 bits integer to memory stored as big endian.
+ * Write a 32 bits unsigned integer to memory stored as big endian.
  * @param p a pointer to the output memory
- * @param x the input integer
+ * @param x the input unsigned integer
  */
 #define WB32(p, x)  do { ((uint8_t*)(p))[3] = (uint8_t) (x);      \
                          ((uint8_t*)(p))[2] = (uint8_t)((x)>>8);  \
@@ -127,9 +147,9 @@
                          ((uint8_t*)(p))[0] = (uint8_t)((x)>>24); } while(0)
 
 /**
- * Write a 32 bits integer to memory stored as little endian.
+ * Write a 32 bits unsigned integer to memory stored as little endian.
  * @param p a pointer to the output memory
- * @param x the input integer
+ * @param x the input unsigned integer
  */
 #define WL32(p, x)  do { ((uint8_t*)(p))[0] = (uint8_t) (x);      \
                          ((uint8_t*)(p))[1] = (uint8_t)((x)>>8);  \
@@ -141,6 +161,15 @@
 #define LIBUSB_CLASS_APPLICATION 0xfe
 #define libusb_handle_events_timeout_completed(ctx, tv, c) \
 	libusb_handle_events_timeout(ctx, tv)
+#endif
+
+/* Static definitions of structs ending with an all-zero entry are a
+ * problem when compiling with -Wmissing-field-initializers: GCC
+ * suppresses the warning only with { 0 }, clang wants { } */
+#ifdef __clang__
+#define ALL_ZERO { }
+#else
+#define ALL_ZERO { 0 }
 #endif
 
 struct sr_context {
@@ -157,6 +186,137 @@ struct sr_context {
 	void *usb_cb_data;
 #endif
 #endif
+};
+
+/** Input module metadata keys. */
+enum sr_input_meta_keys {
+	/** The input filename, if there is one. */
+	SR_INPUT_META_FILENAME = 0x01,
+	/** The input file's size in bytes. */
+	SR_INPUT_META_FILESIZE = 0x02,
+	/** The first 128 bytes of the file, provided as a GString. */
+	SR_INPUT_META_HEADER = 0x04,
+	/** The file's MIME type. */
+	SR_INPUT_META_MIMETYPE = 0x08,
+
+	/** The module cannot identify a file without this metadata. */
+	SR_INPUT_META_REQUIRED = 0x80,
+};
+
+/** Input (file) module struct. */
+struct sr_input {
+	/**
+	 * A pointer to this input module's 'struct sr_input_module'.
+	 */
+	const struct sr_input_module *module;
+	GString *buf;
+	struct sr_dev_inst *sdi;
+	void *priv;
+};
+
+/** Input (file) module driver. */
+struct sr_input_module {
+	/**
+	 * A unique ID for this input module, suitable for use in command-line
+	 * clients, [a-z0-9-]. Must not be NULL.
+	 */
+	const char *id;
+
+	/**
+	 * A unique name for this input module, suitable for use in GUI
+	 * clients, can contain UTF-8. Must not be NULL.
+	 */
+	const char *name;
+
+	/**
+	 * A short description of the input module. Must not be NULL.
+	 *
+	 * This can be displayed by frontends, e.g. when selecting the input
+	 * module for saving a file.
+	 */
+	const char *desc;
+
+	/**
+	 * Zero-terminated list of metadata items the module needs to be able
+	 * to identify an input stream. Can be all-zero, if the module cannot
+	 * identify streams at all, i.e. has to be forced into use.
+	 *
+	 * Each item is one of:
+	 *   SR_INPUT_META_FILENAME
+	 *   SR_INPUT_META_FILESIZE
+	 *   SR_INPUT_META_HEADER
+	 *   SR_INPUT_META_MIMETYPE
+	 *
+	 * If the high bit (SR_INPUT META_REQUIRED) is set, the module cannot
+	 * identify a stream without the given metadata.
+	 */
+	const uint8_t metadata[8];
+
+	/**
+	 * Returns a NULL-terminated list of options this module can take.
+	 * Can be NULL, if the module has no options.
+	 */
+	struct sr_option *(*options) (void);
+
+	/**
+	 * Check if this input module can load and parse the specified stream.
+	 *
+	 * @param[in] metadata Metadata the module can use to identify the stream.
+	 *
+	 * @retval SR_OK This module knows the format.
+	 * @retval SR_OK_CONTINUE There wasn't enough data for this module to
+	 *   positively identify the format.
+	 * @retval SR_ERR_DATA This module knows the format, but cannot handle it.
+	 *   This means the stream is either corrupt, or indicates a feature
+	 *   that the module does not support.
+	 * @retval SR_ERR This module does not know the format.
+	 */
+	int (*format_match) (GHashTable *metadata);
+
+	/**
+	 * Initialize the input module.
+	 *
+	 * @param in A pointer to a valid 'struct sr_input' that the caller
+	 *           has to allocate and provide to this function. It is also
+	 *           the responsibility of the caller to free it later.
+	 * @param[in] filename The name (and path) of the file to use.
+	 *
+	 * @retval SR_OK Success
+	 * @retval other Negative error code.
+	 */
+	int (*init) (struct sr_input *in, GHashTable *options);
+
+	/**
+	 * Load a file, parsing the input according to the file's format.
+	 *
+	 * This function will send datafeed packets to the session bus, so
+	 * the calling frontend must have registered its session callbacks
+	 * beforehand.
+	 *
+	 * The packet types sent across the session bus by this function must
+	 * include at least SR_DF_HEADER, SR_DF_END, and an appropriate data
+	 * type such as SR_DF_LOGIC. It may also send a SR_DF_TRIGGER packet
+	 * if appropriate.
+	 *
+	 * @param in A pointer to a valid 'struct sr_input' that the caller
+	 *           has to allocate and provide to this function. It is also
+	 *           the responsibility of the caller to free it later.
+	 * @param f The name (and path) of the file to use.
+	 *
+	 * @retval SR_OK Success
+	 * @retval other Negative error code.
+	 */
+	int (*receive) (const struct sr_input *in, GString *buf);
+
+	/**
+	 * This function is called after the caller is finished using
+	 * the input module, and can be used to free any internal
+	 * resources the module may keep.
+	 *
+	 * @retval SR_OK Success
+	 * @retval other Negative error code.
+	 */
+	int (*cleanup) (struct sr_input *in);
 };
 
 /** Output module instance. */

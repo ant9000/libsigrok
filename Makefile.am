@@ -43,10 +43,10 @@ libsigrok_la_SOURCES = \
 
 # Input modules
 libsigrok_la_SOURCES += \
+	src/input/input.c \
 	src/input/binary.c \
 	src/input/chronovu_la8.c \
 	src/input/csv.c \
-	src/input/input.c \
 	src/input/vcd.c \
 	src/input/wav.c
 
@@ -263,6 +263,12 @@ libsigrok_la_SOURCES += \
 	src/hardware/openbench-logic-sniffer/protocol.h \
 	src/hardware/openbench-logic-sniffer/protocol.c \
 	src/hardware/openbench-logic-sniffer/api.c
+endif
+if HW_PIPISTRELLO_OLS
+libsigrok_la_SOURCES += \
+	src/hardware/pipistrello-ols/protocol.h \
+	src/hardware/pipistrello-ols/protocol.c \
+	src/hardware/pipistrello-ols/api.c
 endif
 if HW_RIGOL_DS
 libsigrok_la_SOURCES += \

@@ -215,7 +215,7 @@ static int sanity_check_all_drivers(void)
 static int sanity_check_all_input_modules(void)
 {
 	int i, errors, ret = SR_OK;
-	struct sr_input_format **inputs;
+	const struct sr_input_module **inputs;
 	const char *d;
 
 	sr_spew("Sanity-checking all input modules.");
@@ -230,20 +230,20 @@ static int sanity_check_all_input_modules(void)
 			sr_err("No ID in module %d ('%s').", i, d);
 			errors++;
 		}
-		if (!inputs[i]->description) {
-			sr_err("No description in module %d ('%s').", i, d);
+		if (!inputs[i]->name) {
+			sr_err("No name in module %d ('%s').", i, d);
 			errors++;
 		}
-		if (!inputs[i]->format_match) {
-			sr_err("No format_match in module %d ('%s').", i, d);
+		if (!inputs[i]->desc) {
+			sr_err("No description in module %d ('%s').", i, d);
 			errors++;
 		}
 		if (!inputs[i]->init) {
 			sr_err("No init in module %d ('%s').", i, d);
 			errors++;
 		}
-		if (!inputs[i]->loadfile) {
-			sr_err("No loadfile in module %d ('%s').", i, d);
+		if (!inputs[i]->receive) {
+			sr_err("No receive in module %d ('%s').", i, d);
 			errors++;
 		}
 

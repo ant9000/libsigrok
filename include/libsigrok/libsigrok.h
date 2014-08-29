@@ -64,6 +64,7 @@ extern "C" {
 
 /** Status/error codes returned by libsigrok functions. */
 enum sr_error_code {
+	SR_OK_CONTINUE       =  1, /**< Keep going. */
 	SR_OK                =  0, /**< No error. */
 	SR_ERR               = -1, /**< Generic/unspecified error. */
 	SR_ERR_MALLOC        = -2, /**< Malloc/calloc/realloc error. */
@@ -74,6 +75,7 @@ enum sr_error_code {
 	SR_ERR_DEV_CLOSED    = -7, /**< Device is closed, but must be open. */
 	SR_ERR_TIMEOUT       = -8, /**< A timeout occurred. */
 	SR_ERR_CHANNEL_GROUP = -9, /**< A channel group must be specified. */
+	SR_ERR_DATA          =-10, /**< Data is invalid.  */
 
 	/*
 	 * Note: When adding entries here, don't forget to also update the
@@ -443,78 +445,8 @@ struct sr_option {
 	GSList *values;
 };
 
-/** Input (file) format struct. */
-struct sr_input {
-	/**
-	 * A pointer to this input format's 'struct sr_input_format'.
-	 * The frontend can use this to call the module's callbacks.
-	 */
-	struct sr_input_format *format;
-
-	GHashTable *param;
-
-	struct sr_dev_inst *sdi;
-
-	void *internal;
-};
-
-/** Input (file) format driver. */
-struct sr_input_format {
-	/** The unique ID for this input format. Must not be NULL. */
-	char *id;
-
-	/**
-	 * A short description of the input format, which can (for example)
-	 * be displayed to the user by frontends. Must not be NULL.
-	 */
-	char *description;
-
-	/**
-	 * Check if this input module can load and parse the specified file.
-	 *
-	 * @param[in] filename The name (and path) of the file to check.
-	 *
-	 * @retval TRUE This module knows the format.
-	 * @retval FALSE This module does not know the format.
-	 */
-	int (*format_match) (const char *filename);
-
-	/**
-	 * Initialize the input module.
-	 *
-	 * @param in A pointer to a valid 'struct sr_input' that the caller
-	 *           has to allocate and provide to this function. It is also
-	 *           the responsibility of the caller to free it later.
-	 * @param[in] filename The name (and path) of the file to use.
-	 *
-	 * @retval SR_OK Success
-	 * @retval other Negative error code.
-	 */
-	int (*init) (struct sr_input *in, const char *filename);
-
-	/**
-	 * Load a file, parsing the input according to the file's format.
-	 *
-	 * This function will send datafeed packets to the session bus, so
-	 * the calling frontend must have registered its session callbacks
-	 * beforehand.
-	 *
-	 * The packet types sent across the session bus by this function must
-	 * include at least SR_DF_HEADER, SR_DF_END, and an appropriate data
-	 * type such as SR_DF_LOGIC. It may also send a SR_DF_TRIGGER packet
-	 * if appropriate.
-	 *
-	 * @param in A pointer to a valid 'struct sr_input' that the caller
-	 *           has to allocate and provide to this function. It is also
-	 *           the responsibility of the caller to free it later.
-	 * @param filename The name (and path) of the file to use.
-	 *
-	 * @retval SR_OK Success
-	 * @retval other Negative error code.
-	 */
-	int (*loadfile) (struct sr_input *in, const char *filename);
-};
-
+struct sr_input;
+struct sr_input_module;
 struct sr_output;
 struct sr_output_module;
 

@@ -40,18 +40,6 @@ static const char *valid_string(const char *input)
 		return "";
 }
 
-/** Helper function to convert between map<string, string> and GHashTable */
-static GHashTable *map_to_hash_string(map<string, string> input)
-{
-	auto output = g_hash_table_new_full(
-		g_str_hash, g_str_equal, g_free, g_free);
-	for (auto entry : input)
-		g_hash_table_insert(output,
-			g_strdup(entry.first.c_str()),
-			g_strdup(entry.second.c_str()));
-    return output;
-}
-
 /** Helper function to convert between map<string, VariantBase> and GHashTable */
 static GHashTable *map_to_hash_variant(map<string, Glib::VariantBase> input)
 {
@@ -92,10 +80,10 @@ Context::Context() :
 		for (int i = 0; driver_list[i]; i++)
 			drivers[driver_list[i]->name] =
 				new Driver(driver_list[i]);
-	struct sr_input_format **input_list = sr_input_list();
+	const struct sr_input_module **input_list = sr_input_list();
 	if (input_list)
 		for (int i = 0; input_list[i]; i++)
-			input_formats[input_list[i]->id] =
+			input_formats[sr_input_id_get(input_list[i])] =
 				new InputFormat(input_list[i]);
 	const struct sr_output_module **output_list = sr_output_list();
 	if (output_list)
@@ -239,6 +227,27 @@ shared_ptr<Trigger> Context::create_trigger(string name)
 		new Trigger(shared_from_this(), name), Trigger::Deleter());
 }
 
+shared_ptr<Input> Context::open_file(string filename)
+{
+	const struct sr_input *input;
+
+	check( sr_input_scan_file(filename.c_str(), &input));
+	return shared_ptr<Input>(
+		new Input(shared_from_this(), input), Input::Deleter());
+}
+
+shared_ptr<Input> Context::open_stream(string header)
+{
+	const struct sr_input *input;
+
+	auto gstr = g_string_new(header.c_str());
+	auto ret = sr_input_scan_buffer(gstr, &input);
+	g_string_free(gstr, true);
+	check(ret);
+	return shared_ptr<Input>(
+		new Input(shared_from_this(), input), Input::Deleter());
+}
+
 Driver::Driver(struct sr_dev_driver *structure) :
 	StructureWrapper<Context, struct sr_dev_driver>(structure),
 	initialized(false)
@@ -353,7 +362,7 @@ Glib::VariantContainerBase Configurable::config_list(const ConfigKey *key)
 
 Device::Device(struct sr_dev_inst *structure) :
 	Configurable(structure->driver, structure, NULL),
-	StructureWrapper<Context, struct sr_dev_inst>(structure)
+	structure(structure)
 {
 	for (GSList *entry = structure->channels; entry; entry = entry->next)
 	{
@@ -445,6 +454,7 @@ void Device::close()
 }
 
 HardwareDevice::HardwareDevice(Driver *driver, struct sr_dev_inst *structure) :
+	StructureWrapper(structure),
 	Device(structure),
 	driver(driver)
 {
@@ -1100,8 +1110,8 @@ vector<const QuantityFlag *> Analog::get_mq_flags()
 	return QuantityFlag::flags_from_mask(structure->mqflags);
 }
 
-InputFormat::InputFormat(struct sr_input_format *structure) :
-	StructureWrapper<Context, struct sr_input_format>(structure)
+InputFormat::InputFormat(const struct sr_input_module *structure) :
+	StructureWrapper<Context, const struct sr_input_module>(structure)
 {
 }
 
@@ -1111,52 +1121,82 @@ InputFormat::~InputFormat()
 
 string InputFormat::get_name()
 {
-	return valid_string(structure->id);
+	return valid_string(sr_input_id_get(structure));
 }
 
 string InputFormat::get_description()
 {
-	return valid_string(structure->description);
+	return valid_string(sr_input_description_get(structure));
 }
 
-bool InputFormat::format_match(string filename)
+map<string, shared_ptr<Option>> InputFormat::get_options()
 {
-	return structure->format_match(filename.c_str());
+	const struct sr_option **options = sr_input_options_get(structure);
+	auto option_array = shared_ptr<const struct sr_option *>(
+		options, sr_input_options_free);
+	map<string, shared_ptr<Option>> result;
+	for (int i = 0; options[i]; i++)
+		result[options[i]->id] = shared_ptr<Option>(
+			new Option(options[i], option_array), Option::Deleter());
+	return result;
 }
 
-shared_ptr<InputFileDevice> InputFormat::open_file(string filename,
-		map<string, string> options)
+shared_ptr<Input> InputFormat::create_input(
+	map<string, Glib::VariantBase> options)
 {
-	auto input = g_new(struct sr_input, 1);
-	input->param = map_to_hash_string(options);
-
-	/** Run initialisation. */
-	check(structure->init(input, filename.c_str()));
-
-	/** Create virtual device. */
-	return shared_ptr<InputFileDevice>(new InputFileDevice(
-		static_pointer_cast<InputFormat>(shared_from_this()), input, filename),
-		InputFileDevice::Deleter());
+	auto input = sr_input_new(structure, map_to_hash_variant(options));
+	if (!input)
+		throw Error(SR_ERR_ARG);
+	return shared_ptr<Input>(
+		new Input(parent->shared_from_this(), input), Input::Deleter());
 }
 
-InputFileDevice::InputFileDevice(shared_ptr<InputFormat> format,
-		struct sr_input *input, string filename) :
-	Device(input->sdi),
-	input(input),
-	format(format),
-	filename(filename)
+Input::Input(shared_ptr<Context> context, const struct sr_input *structure) :
+	structure(structure),
+	context(context),
+	device(nullptr)
 {
 }
 
-InputFileDevice::~InputFileDevice()
+shared_ptr<InputDevice> Input::get_device()
 {
-	g_hash_table_unref(input->param);
-	g_free(input);
+	if (!device)
+	{
+		auto sdi = sr_input_dev_inst_get(structure);
+		if (!sdi)
+			throw Error(SR_ERR_NA);
+		device = new InputDevice(shared_from_this(), sdi);
+	}
+
+	return static_pointer_cast<InputDevice>(
+		device->get_shared_pointer(shared_from_this()));
 }
 
-void InputFileDevice::load()
+void Input::send(string data)
 {
-	check(format->structure->loadfile(input, filename.c_str()));
+	auto gstr = g_string_new(data.c_str());
+	auto ret = sr_input_send(structure, gstr);
+	g_string_free(gstr, false);
+	check(ret);
+}
+
+Input::~Input()
+{
+	if (device)
+		delete device;
+	check(sr_input_free(structure));
+}
+
+InputDevice::InputDevice(shared_ptr<Input> input,
+		struct sr_dev_inst *structure) :
+	StructureWrapper(structure),
+	Device(structure),
+	input(input)
+{
+}
+
+InputDevice::~InputDevice()
+{
 }
 
 Option::Option(const struct sr_option *structure,

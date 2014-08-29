@@ -58,6 +58,8 @@ SR_API const char *sr_strerror(int error_code)
 	 */
 
 	switch (error_code) {
+	case SR_OK_CONTINUE:
+		return "not enough data to decide error status yet";
 	case SR_OK:
 		return "no error";
 	case SR_ERR:
@@ -78,6 +80,8 @@ SR_API const char *sr_strerror(int error_code)
 		return "timeout occurred";
 	case SR_ERR_CHANNEL_GROUP:
 		return "no channel group specified";
+	case SR_ERR_DATA:
+		return "data is invalid";
 	default:
 		return "unknown error";
 	}
