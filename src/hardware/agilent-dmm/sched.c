@@ -197,6 +197,38 @@ static int recv_stat_u123x(const struct sr_dev_inst *sdi, GMatchInfo *match)
 	return SR_OK;
 }
 
+static int recv_stat_u124x(const struct sr_dev_inst *sdi, GMatchInfo *match)
+{
+	struct dev_context *devc;
+	char *s;
+
+	devc = sdi->priv;
+	s = g_match_info_fetch(match, 1);
+	sr_spew("STAT response '%s'.", s);
+
+	/* Max, Min or Avg mode -- no way to tell which, so we'll
+	 * set both flags to denote it's not a normal measurement. */
+	if (s[0] == '1')
+		devc->cur_mqflags |= SR_MQFLAG_MAX | SR_MQFLAG_MIN;
+	else
+		devc->cur_mqflags &= ~(SR_MQFLAG_MAX | SR_MQFLAG_MIN);
+
+	if (s[1] == '1')
+		devc->cur_mqflags |= SR_MQFLAG_RELATIVE;
+	else
+		devc->cur_mqflags &= ~SR_MQFLAG_RELATIVE;
+
+	/* Hold mode. */
+	if (s[7] == '1')
+		devc->cur_mqflags |= SR_MQFLAG_HOLD;
+	else
+		devc->cur_mqflags &= ~SR_MQFLAG_HOLD;
+
+	g_free(s);
+
+	return SR_OK;
+}
+
 static int recv_stat_u125x(const struct sr_dev_inst *sdi, GMatchInfo *match)
 {
 	struct dev_context *devc;
@@ -234,6 +266,7 @@ static int recv_fetc(const struct sr_dev_inst *sdi, GMatchInfo *match)
 	struct sr_datafeed_packet packet;
 	struct sr_datafeed_analog analog;
 	float fvalue;
+	const char *s;
 	char *mstr;
 
 	sr_spew("FETC reply '%s'.", g_match_info_get_string(match));
@@ -245,7 +278,8 @@ static int recv_fetc(const struct sr_dev_inst *sdi, GMatchInfo *match)
 		 * get metadata soon enough. */
 		return SR_OK;
 
-	if (!strcmp(g_match_info_get_string(match), "+9.90000000E+37")) {
+	s = g_match_info_get_string(match);
+	if (!strcmp(s, "-9.90000000E+37") || !strcmp(s, "+9.90000000E+37")) {
 		/* An invalid measurement shows up on the display as "O.L", but
 		 * comes through like this. Since comparing 38-digit floats
 		 * is rather problematic, we'll cut through this here. */
@@ -254,7 +288,7 @@ static int recv_fetc(const struct sr_dev_inst *sdi, GMatchInfo *match)
 		mstr = g_match_info_fetch(match, 1);
 		if (sr_atof_ascii(mstr, &fvalue) != SR_OK) {
 			g_free(mstr);
-			sr_err("Invalid float.");
+			sr_dbg("Invalid float.");
 			return SR_ERR;
 		}
 		g_free(mstr);
@@ -347,12 +381,15 @@ static int recv_conf_u123x(const struct sr_dev_inst *sdi, GMatchInfo *match)
 	if (g_match_info_get_match_count(match) == 4) {
 		mstr = g_match_info_fetch(match, 3);
 		/* Third value, if present, is always AC or DC. */
-		if (!strcmp(mstr, "AC"))
+		if (!strcmp(mstr, "AC")) {
 			devc->cur_mqflags |= SR_MQFLAG_AC;
-		else if (!strcmp(mstr, "DC"))
+			if (devc->cur_mq == SR_MQ_VOLTAGE)
+				devc->cur_mqflags |= SR_MQFLAG_RMS;
+		} else if (!strcmp(mstr, "DC")) {
 			devc->cur_mqflags |= SR_MQFLAG_DC;
-		else
+		} else {
 			sr_dbg("Unknown third argument.");
+		}
 		g_free(mstr);
 	} else
 		devc->cur_mqflags &= ~(SR_MQFLAG_AC | SR_MQFLAG_DC);
@@ -360,7 +397,7 @@ static int recv_conf_u123x(const struct sr_dev_inst *sdi, GMatchInfo *match)
 	return SR_OK;
 }
 
-static int recv_conf_u125x(const struct sr_dev_inst *sdi, GMatchInfo *match)
+static int recv_conf_u124x_5x(const struct sr_dev_inst *sdi, GMatchInfo *match)
 {
 	struct dev_context *devc;
 	char *mstr;
@@ -374,13 +411,16 @@ static int recv_conf_u125x(const struct sr_dev_inst *sdi, GMatchInfo *match)
 		devc->cur_mqflags = 0;
 		devc->cur_divider = 0;
 		if (mstr[4] == ':') {
-			if (!strcmp(mstr + 4, "AC"))
-				devc->cur_mqflags |= SR_MQFLAG_AC;
-			else if (!strcmp(mstr + 4, "DC"))
+			if (!strcmp(mstr + 4, "AC")) {
+				devc->cur_mqflags |= SR_MQFLAG_AC | SR_MQFLAG_RMS;
+			} else if (!strcmp(mstr + 4, "DC")) {
 				devc->cur_mqflags |= SR_MQFLAG_DC;
-			else
-				/* "ACDC" appears as well, no idea what it means. */
+			} else if (!strcmp(mstr + 4, "ACDC")) {
+				/* AC + DC offset */
+				devc->cur_mqflags |= SR_MQFLAG_AC | SR_MQFLAG_DC | SR_MQFLAG_RMS;
+			} else {
 				devc->cur_mqflags &= ~(SR_MQFLAG_AC | SR_MQFLAG_DC);
+			}
 		} else
 			devc->cur_mqflags &= ~(SR_MQFLAG_AC | SR_MQFLAG_DC);
 	} else if(!strcmp(mstr, "CURR")) {
@@ -398,8 +438,9 @@ static int recv_conf_u125x(const struct sr_dev_inst *sdi, GMatchInfo *match)
 		}
 		devc->cur_mqflags = 0;
 		devc->cur_divider = 0;
-	} else
+	} else {
 		sr_dbg("Unknown first argument.");
+	}
 	g_free(mstr);
 
 	return SR_OK;
@@ -439,7 +480,8 @@ static int recv_switch(const struct sr_dev_inst *sdi, GMatchInfo *match)
 	return SR_OK;
 }
 
-SR_PRIV const struct agdmm_job agdmm_jobs_u123x[] = {
+/* Poll keys/switches and values at 7Hz, mode at 1Hz. */
+SR_PRIV const struct agdmm_job agdmm_jobs_u12xx[] = {
 	{ 143, send_stat },
 	{ 1000, send_conf },
 	{ 143, send_fetc },
@@ -456,19 +498,22 @@ SR_PRIV const struct agdmm_recv agdmm_recvs_u123x[] = {
 	{ NULL, NULL }
 };
 
-SR_PRIV const struct agdmm_job agdmm_jobs_u125x[] = {
-	{ 143, send_stat },
-	{ 1000, send_conf },
-	{ 143, send_fetc },
-	{ 0, NULL }
+SR_PRIV const struct agdmm_recv agdmm_recvs_u124x[] = {
+	{ "^\"(\\d\\d.{18}\\d)\"$", recv_stat_u124x },
+	{ "^\\*([0-9])$", recv_switch },
+	{ "^([-+][0-9]\\.[0-9]{8}E[-+][0-9]{2})$", recv_fetc },
+	{ "^(VOLT|CURR|RES|CAP) ([-+][0-9\\.E\\-+]+),([-+][0-9\\.E\\-+]+)$", recv_conf_u124x_5x },
+	{ "^(VOLT:[ACD]+) ([-+][0-9\\.E\\-+]+),([-+][0-9\\.E\\-+]+)$", recv_conf_u124x_5x },
+	{ "^\"(DIOD)\"$", recv_conf },
+	{ NULL, NULL }
 };
 
 SR_PRIV const struct agdmm_recv agdmm_recvs_u125x[] = {
 	{ "^\"(\\d\\d.{18}\\d)\"$", recv_stat_u125x },
 	{ "^\\*([0-9])$", recv_switch },
 	{ "^([-+][0-9]\\.[0-9]{8}E[-+][0-9]{2})$", recv_fetc },
-	{ "^(VOLT|CURR|RES|CAP) ([-+][0-9\\.E\\-+]+),([-+][0-9\\.E\\-+]+)$", recv_conf_u125x },
-	{ "^(VOLT:[ACD]+) ([-+][0-9\\.E\\-+]+),([-+][0-9\\.E\\-+]+)$", recv_conf_u125x },
+	{ "^(VOLT|CURR|RES|CAP) ([-+][0-9\\.E\\-+]+),([-+][0-9\\.E\\-+]+)$", recv_conf_u124x_5x },
+	{ "^(VOLT:[ACD]+) ([-+][0-9\\.E\\-+]+),([-+][0-9\\.E\\-+]+)$", recv_conf_u124x_5x },
 	{ "^\"(DIOD)\"$", recv_conf },
 	{ NULL, NULL }
 };

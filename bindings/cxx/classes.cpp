@@ -44,8 +44,7 @@ static const char *valid_string(const char *input)
 static GHashTable *map_to_hash_variant(map<string, Glib::VariantBase> input)
 {
 	auto output = g_hash_table_new_full(
-		g_variant_hash, g_variant_equal, g_free,
-		(void (*)(void *))g_variant_unref);
+		g_str_hash, g_str_equal, g_free, (GDestroyNotify) g_variant_unref);
 	for (auto entry : input)
 		g_hash_table_insert(output,
 			g_strdup(entry.first.c_str()),
@@ -419,14 +418,14 @@ vector<shared_ptr<Channel>> Device::get_channels()
 	vector<shared_ptr<Channel>> result;
 	for (auto entry : channels)
 		result.push_back(static_pointer_cast<Channel>(
-			entry.second->get_shared_pointer(this)));
+			entry.second->get_shared_pointer(get_shared_from_this())));
 	return result;
 }
 
 shared_ptr<Channel> Device::get_channel(struct sr_channel *ptr)
 {
 	return static_pointer_cast<Channel>(
-		channels[ptr]->get_shared_pointer(this));
+		channels[ptr]->get_shared_pointer(get_shared_from_this()));
 }
 
 map<string, shared_ptr<ChannelGroup>>
@@ -438,7 +437,7 @@ Device::get_channel_groups()
 		auto name = entry.first;
 		auto channel_group = entry.second;
 		result[name] = static_pointer_cast<ChannelGroup>(
-			channel_group->get_shared_pointer(this));
+			channel_group->get_shared_pointer(get_shared_from_this()));
 	}
 	return result;
 }
@@ -462,6 +461,12 @@ HardwareDevice::HardwareDevice(Driver *driver, struct sr_dev_inst *structure) :
 
 HardwareDevice::~HardwareDevice()
 {
+}
+
+shared_ptr<Device> HardwareDevice::get_shared_from_this()
+{
+	return static_pointer_cast<Device>(
+		static_pointer_cast<HardwareDevice>(shared_from_this()));
 }
 
 shared_ptr<Driver> HardwareDevice::get_driver()
@@ -735,9 +740,6 @@ vector<shared_ptr<Device>> Session::get_devices()
 	for (GSList *dev = dev_list; dev; dev = dev->next)
 	{
 		auto sdi = (struct sr_dev_inst *) dev->data;
-		if (devices.count(sdi) == 0)
-			devices[sdi] = shared_ptr<Device>(
-				new Device(sdi), Device::Deleter());
 		result.push_back(devices[sdi]);
 	}
 	return result;
@@ -971,6 +973,9 @@ Packet::Packet(shared_ptr<Device> device,
 				static_cast<const struct sr_datafeed_analog *>(
 					structure->payload));
 			break;
+		default:
+			payload = nullptr;
+			break;
 	}
 }
 
@@ -987,7 +992,10 @@ const PacketType *Packet::get_type()
 
 shared_ptr<PacketPayload> Packet::get_payload()
 {
-	return payload->get_shared_pointer(this);
+	if (payload)
+		return payload->get_shared_pointer(this);
+	else
+		throw Error(SR_ERR_NA);
 }
 
 PacketPayload::PacketPayload()
@@ -999,13 +1007,21 @@ PacketPayload::~PacketPayload()
 }
 
 Header::Header(const struct sr_datafeed_header *structure) :
-	PacketPayload(),
-	StructureWrapper<Packet, const struct sr_datafeed_header>(structure)
+	StructureWrapper<Packet, const struct sr_datafeed_header>(structure),
+	PacketPayload()
 {
 }
 
 Header::~Header()
 {
+}
+
+shared_ptr<PacketPayload> Header::get_shared_pointer(Packet *parent)
+{
+	return static_pointer_cast<PacketPayload>(
+		static_pointer_cast<Header>(
+		StructureWrapper<Packet, const struct sr_datafeed_header>::
+			get_shared_pointer(parent)));
 }
 
 int Header::get_feed_version()
@@ -1021,13 +1037,21 @@ Glib::TimeVal Header::get_start_time()
 }
 
 Meta::Meta(const struct sr_datafeed_meta *structure) :
-	PacketPayload(),
-	StructureWrapper<Packet, const struct sr_datafeed_meta>(structure)
+	StructureWrapper<Packet, const struct sr_datafeed_meta>(structure),
+	PacketPayload()
 {
 }
 
 Meta::~Meta()
 {
+}
+
+shared_ptr<PacketPayload> Meta::get_shared_pointer(Packet *parent)
+{
+	return static_pointer_cast<PacketPayload>(
+		static_pointer_cast<Meta>(
+		StructureWrapper<Packet, const struct sr_datafeed_meta>::
+			get_shared_pointer(parent)));
 }
 
 map<const ConfigKey *, Glib::VariantBase> Meta::get_config()
@@ -1042,13 +1066,21 @@ map<const ConfigKey *, Glib::VariantBase> Meta::get_config()
 }
 
 Logic::Logic(const struct sr_datafeed_logic *structure) :
-	PacketPayload(),
-	StructureWrapper<Packet, const struct sr_datafeed_logic>(structure)
+	StructureWrapper<Packet, const struct sr_datafeed_logic>(structure),
+	PacketPayload()
 {
 }
 
 Logic::~Logic()
 {
+}
+
+shared_ptr<PacketPayload> Logic::get_shared_pointer(Packet *parent)
+{
+	return static_pointer_cast<PacketPayload>(
+		static_pointer_cast<Logic>(
+		StructureWrapper<Packet, const struct sr_datafeed_logic>::
+			get_shared_pointer(parent)));
 }
 
 void *Logic::get_data_pointer()
@@ -1067,13 +1099,21 @@ unsigned int Logic::get_unit_size()
 }
 
 Analog::Analog(const struct sr_datafeed_analog *structure) :
-	PacketPayload(),
-	StructureWrapper<Packet, const struct sr_datafeed_analog>(structure)
+	StructureWrapper<Packet, const struct sr_datafeed_analog>(structure),
+	PacketPayload()
 {
 }
 
 Analog::~Analog()
 {
+}
+
+shared_ptr<PacketPayload> Analog::get_shared_pointer(Packet *parent)
+{
+	return static_pointer_cast<PacketPayload>(
+		static_pointer_cast<Analog>(
+		StructureWrapper<Packet, const struct sr_datafeed_analog>::
+			get_shared_pointer(parent)));
 }
 
 float *Analog::get_data_pointer()
@@ -1197,6 +1237,12 @@ InputDevice::InputDevice(shared_ptr<Input> input,
 
 InputDevice::~InputDevice()
 {
+}
+
+shared_ptr<Device> InputDevice::get_shared_from_this()
+{
+	return static_pointer_cast<Device>(
+		static_pointer_cast<InputDevice>(shared_from_this()));
 }
 
 Option::Option(const struct sr_option *structure,

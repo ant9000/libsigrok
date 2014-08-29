@@ -289,9 +289,7 @@ protected:
 };
 
 /** A generic device, either hardware or virtual */
-class SR_API Device :
-	public enable_shared_from_this<Device>,
-	public Configurable
+class SR_API Device : public Configurable
 {
 public:
 	/** Description identifying this device. */
@@ -313,6 +311,7 @@ public:
 protected:
 	Device(struct sr_dev_inst *structure);
 	~Device();
+	virtual shared_ptr<Device> get_shared_from_this() = 0;
 	shared_ptr<Channel> get_channel(struct sr_channel *ptr);
 	struct sr_dev_inst *structure;
 	map<struct sr_channel *, Channel *> channels;
@@ -342,6 +341,7 @@ public:
 protected:
 	HardwareDevice(Driver *driver, struct sr_dev_inst *structure);
 	~HardwareDevice();
+	shared_ptr<Device> get_shared_from_this();
 	Driver *driver;
 	friend class Driver;
 	friend class ChannelGroup;
@@ -645,9 +645,7 @@ class SR_API PacketPayload
 protected:
 	PacketPayload();
 	virtual ~PacketPayload() = 0;
-	shared_ptr<PacketPayload> get_shared_pointer(Packet *parent) {
-		return static_pointer_cast<PacketPayload>(get_shared_pointer(parent));
-	}
+	virtual shared_ptr<PacketPayload> get_shared_pointer(Packet *parent) = 0;
 	/** Deleter needed to allow shared_ptr use with protected destructor. */
 	class Deleter
 	{
@@ -660,8 +658,9 @@ protected:
 };
 
 /** Payload of a datafeed header packet */
-class SR_API Header : public PacketPayload,
-	public StructureWrapper<Packet, const struct sr_datafeed_header>
+class SR_API Header :
+	public StructureWrapper<Packet, const struct sr_datafeed_header>,
+	public PacketPayload
 {
 public:
 	/* Feed version number. */
@@ -671,13 +670,14 @@ public:
 protected:
 	Header(const struct sr_datafeed_header *structure);
 	~Header();
-	const struct sr_datafeed_header *structure;
+	shared_ptr<PacketPayload> get_shared_pointer(Packet *parent);
 	friend class Packet;
 };
 
 /** Payload of a datafeed metadata packet */
-class SR_API Meta : public PacketPayload,
-	public StructureWrapper<Packet, const struct sr_datafeed_meta>
+class SR_API Meta :
+	public StructureWrapper<Packet, const struct sr_datafeed_meta>,
+	public PacketPayload
 {
 public:
 	/* Mapping of (ConfigKey, value) pairs. */
@@ -685,14 +685,15 @@ public:
 protected:
 	Meta(const struct sr_datafeed_meta *structure);
 	~Meta();
-	const struct sr_datafeed_meta *structure;
+	shared_ptr<PacketPayload> get_shared_pointer(Packet *parent);
 	map<const ConfigKey *, Glib::VariantBase> config;
 	friend class Packet;
 };
 
 /** Payload of a datafeed packet with logic data */
-class SR_API Logic : public PacketPayload,
-	public StructureWrapper<Packet, const struct sr_datafeed_logic>
+class SR_API Logic :
+	public StructureWrapper<Packet, const struct sr_datafeed_logic>,
+	public PacketPayload
 {
 public:
 	/* Pointer to data. */
@@ -704,13 +705,14 @@ public:
 protected:
 	Logic(const struct sr_datafeed_logic *structure);
 	~Logic();
-	const struct sr_datafeed_logic *structure;
+	shared_ptr<PacketPayload> get_shared_pointer(Packet *parent);
 	friend class Packet;
 };
 
 /** Payload of a datafeed packet with analog data */
-class SR_API Analog : public PacketPayload,
-	public StructureWrapper<Packet, const struct sr_datafeed_analog>
+class SR_API Analog :
+	public StructureWrapper<Packet, const struct sr_datafeed_analog>,
+	public PacketPayload
 {
 public:
 	/** Pointer to data. */
@@ -728,7 +730,7 @@ public:
 protected:
 	Analog(const struct sr_datafeed_analog *structure);
 	~Analog();
-	const struct sr_datafeed_analog *structure;
+	shared_ptr<PacketPayload> get_shared_pointer(Packet *parent);
 	friend class Packet;
 };
 
@@ -765,6 +767,7 @@ public:
 protected:
 	Input(shared_ptr<Context> context, const struct sr_input *structure);
 	~Input();
+	shared_ptr<Device> get_shared_from_this();
 	const struct sr_input *structure;
 	shared_ptr<Context> context;
 	InputDevice *device;
@@ -787,6 +790,7 @@ class SR_API InputDevice :
 protected:
 	InputDevice(shared_ptr<Input> input, struct sr_dev_inst *sdi);
 	~InputDevice();
+	shared_ptr<Device> get_shared_from_this();
 	shared_ptr<Input> input;
 	/** Deleter needed to allow shared_ptr use with protected destructor. */
 	class Deleter
