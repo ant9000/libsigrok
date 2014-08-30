@@ -37,9 +37,17 @@ static int init(struct sr_context *sr_ctx)
         return std_init(sr_ctx, di, LOG_PREFIX);
 }
 
+static void clear_helper(void *priv)
+{
+        struct UNIT *devc;
+
+        devc = priv;
+        g_free(devc);
+}
+
 static int dev_clear(void)
 {
-        return std_dev_clear(di, NULL);
+        return std_dev_clear(di, clear_helper);
 }
 
 static int cleanup(void)
@@ -53,10 +61,12 @@ static GSList *scan(GSList *options)
 	int16_t handle;
 
         struct sr_dev_inst *sdi;
-//      struct sr_channel *ch;
+        struct sr_channel *ch;
         struct drv_context *drvc;
         UNIT *devc;
         GSList *devices,*iter;
+        int i,j;
+        char channel_name[4] = {0};
 
         (void)options;
         drvc = di->priv;
@@ -85,14 +95,23 @@ static GSList *scan(GSList *options)
                         sdi->driver = di;
                         sdi->priv = devc;
 
-/*
-                        for (i = 0; channel_names[i]; i++) {
-                                if (!(ch = sr_channel_new(i, SR_CHANNEL_LOGIC, TRUE,
-                                                           channel_names[i])))
-                                        return NULL;
+                        for (i = 0; i < devc->channelCount; i++) {
+                                snprintf(channel_name,4,"%c",'A'+i);
+                                ch = sr_channel_new(i, SR_CHANNEL_ANALOG, TRUE, channel_name);
+                                if (!ch)
+                                        return NULL; // TODO
                                 sdi->channels = g_slist_append(sdi->channels, ch);
                         }
-*/
+
+                        for (i = 0; i < devc->digitalPorts; i++) {
+                                for (j = 0; j < 8; j++) {
+                                        snprintf(channel_name,4,"D%02d",i*8+j);
+                                        ch = sr_channel_new(i, SR_CHANNEL_LOGIC, TRUE, channel_name);
+                                        if (!ch)
+                                                return NULL; // TODO
+                                        sdi->channels = g_slist_append(sdi->channels, ch);
+                                }
+                        }
 
                         devices = g_slist_append(devices, sdi);
                         drvc->instances = g_slist_append(drvc->instances, sdi);

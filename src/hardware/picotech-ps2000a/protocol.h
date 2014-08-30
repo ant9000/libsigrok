@@ -21,6 +21,7 @@
 #ifndef LIBSIGROK_HARDWARE_PICOTECH_PS2000A_PROTOCOL_H
 #define LIBSIGROK_HARDWARE_PICOTECH_PS2000A_PROTOCOL_H
 
+#include <stdio.h>
 #include <stdint.h>
 #include <string.h>
 #include <glib.h>

@@ -36,6 +36,7 @@ Makefile.in
 *.la
 .libs/
 *.pc
+*.swp
 
 # KDE backup files
 *.kate-swp
