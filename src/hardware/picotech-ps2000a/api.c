@@ -19,14 +19,6 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <fcntl.h>
-#include <unistd.h>
-#include <stdlib.h>
-#include <string.h>
-#include <math.h>
-#include <glib.h>
-#include "libsigrok.h"
-#include "libsigrok-internal.h"
 #include "protocol.h"
 
 /*
@@ -57,8 +49,65 @@ static int cleanup(void)
 
 static GSList *scan(GSList *options)
 {
-        // TODO
-        return NULL;
+        PICO_STATUS status;
+	int16_t handle;
+
+        struct sr_dev_inst *sdi;
+//      struct sr_channel *ch;
+        struct drv_context *drvc;
+        UNIT *devc;
+        GSList *devices,*iter;
+
+        (void)options;
+        drvc = di->priv;
+        devices = NULL;
+
+	do
+	{
+	        status = ps2000aOpenUnit(&handle, NULL);
+		if(status == PICO_OK)
+		{
+                        if (!(devc = g_try_malloc0(sizeof(UNIT)))) {
+                                sr_err("Device context malloc failed.");
+                                goto end;
+                        }
+                        devc->handle = handle;
+                        set_info(devc);
+
+                        /* Register the device with libsigrok. */
+                        sdi = sr_dev_inst_new(0, SR_ST_INACTIVE,
+                                        "Picotech", devc->modelString, devc->serial);
+                        if (!sdi) {
+                                sr_err("Failed to create device instance.");
+                                g_free(devc);          
+                                goto end;
+                        }
+                        sdi->driver = di;
+                        sdi->priv = devc;
+
+/*
+                        for (i = 0; channel_names[i]; i++) {
+                                if (!(ch = sr_channel_new(i, SR_CHANNEL_LOGIC, TRUE,
+                                                           channel_names[i])))
+                                        return NULL;
+                                sdi->channels = g_slist_append(sdi->channels, ch);
+                        }
+*/
+
+                        devices = g_slist_append(devices, sdi);
+                        drvc->instances = g_slist_append(drvc->instances, sdi);
+		}
+	} while(status != PICO_NOT_FOUND);
+
+        /* Close devices. We'll reopen them again when we need it. */
+        for(iter = devices; iter != NULL; iter = iter->next){
+           sdi  = (struct sr_dev_inst *)(iter->data);
+           devc = sdi->priv;
+           ps2000aCloseUnit(devc->handle);
+        }
+
+end:
+        return devices;
 }
 
 
@@ -69,14 +118,27 @@ static GSList *dev_list(void)
 
 static int dev_open(struct sr_dev_inst *sdi)
 {
-        // TODO
+        UNIT *devc;
+        PICO_STATUS status;
+        devc = sdi->priv;
+	status = ps2000aOpenUnit(&devc->handle, NULL);
+        if(status != PICO_OK){
+                return SR_ERR;
+        }
+        sdi->status = SR_ST_ACTIVE;
         return SR_OK;
 }
 
 static int dev_close(struct sr_dev_inst *sdi)
 {
-        // TODO
+        UNIT *devc;
+        devc = sdi->priv;
+        if (sdi->status == SR_ST_ACTIVE) {
+                ps2000aCloseUnit(devc->handle);
+        }
+        sdi->status = SR_ST_INACTIVE;
         return SR_OK;
+
 }
 
 static int config_get(int id, GVariant **data, const struct sr_dev_inst *sdi,
