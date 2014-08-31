@@ -21,13 +21,26 @@
 
 #include "protocol.h"
 
-/*
-defs here
-*/
 static const int32_t hwcaps[] = {
         SR_CONF_OSCILLOSCOPE,
         SR_CONF_LOGIC_ANALYZER,
         SR_CONF_SAMPLERATE,
+        // TODO
+};
+
+static const int32_t analog_hwcaps[] = {
+        SR_CONF_NUM_VDIV,
+        SR_CONF_VDIV,
+        SR_CONF_COUPLING,
+};
+
+static const int32_t digital_hwcaps[] = {
+        SR_CONF_VOLTAGE_THRESHOLD,
+};
+
+static const char *coupling[] = {
+        "AC",
+        "DC",
 };
 
 
@@ -45,9 +58,7 @@ static void clear_helper(void *priv)
 
         devc = priv;
         g_free(devc->analog_groups);
-        if (devc->digitalPorts) {
-                g_free(devc->digital_groups);
-        }
+        g_free(devc->digital_groups);
         g_free(devc);
 }
 
@@ -72,7 +83,7 @@ static GSList *scan(GSList *options)
         UNIT *devc;
         GSList *devices,*iter;
         int i,j;
-        char channel_name[4] = {0};
+        gchar *channel_name;
 
         (void)options;
         drvc = di->priv;
@@ -104,12 +115,14 @@ static GSList *scan(GSList *options)
                         devc->analog_groups = g_malloc0(sizeof(struct sr_channel_group*) *
                                         devc->channelCount);
                         for (i = 0; i < devc->channelCount; i++) {
-                                snprintf(channel_name,4,"%c",'A'+i);
+                                if (!(channel_name = g_strdup_printf("%c", 'A'+i)))
+                                        return NULL; // TODO: better error handling
                                 ch = sr_channel_new(i, SR_CHANNEL_ANALOG, TRUE, channel_name);
                                 if (!ch)
-                                        return NULL; // TODO: better error checking
+                                        return NULL; // TODO: better error handling
                                 sdi->channels = g_slist_append(sdi->channels, ch);
                                 // add the analog channel as a device channel group 
+                                devc->analog_groups[i] = g_malloc0(sizeof(struct sr_channel_group));
                                 devc->analog_groups[i]->name = channel_name;
                                 devc->analog_groups[i]->channels = g_slist_append(NULL, ch);
                                 sdi->channel_groups = g_slist_append(sdi->channel_groups,
@@ -120,8 +133,10 @@ static GSList *scan(GSList *options)
                                 devc->digital_groups = g_malloc0(sizeof(struct sr_channel_group*) *
                                         devc->digitalPorts);
                                 for (i = 0; i < devc->digitalPorts; i++) {
+                                        devc->digital_groups[i] = g_malloc0(sizeof(struct sr_channel_group));
                                         for (j = 0; j < 8; j++) {
-                                                snprintf(channel_name,4,"D%02d",i*8+j);
+                                                if (!(channel_name = g_strdup_printf("D%02d", i*8+j)))
+                                                        return NULL; // TODO: better error handling
                                                 ch = sr_channel_new(i, SR_CHANNEL_LOGIC, TRUE, channel_name);
                                                 if (!ch)
                                                         return NULL; // TODO: better error checking
@@ -205,8 +220,7 @@ static int config_list(int key, GVariant **data, const struct sr_dev_inst *sdi,
                 const struct sr_channel_group *cg)
 {
         UNIT *devc = NULL;
-        int i;
-        int cg_valid;
+        unsigned int i;
 
         if (sdi)
                 devc = sdi->priv;
@@ -222,27 +236,49 @@ static int config_list(int key, GVariant **data, const struct sr_dev_inst *sdi,
                 return SR_ERR_ARG;
 
         /* If a channel group is specified, it must be a valid one. */
-        cg_valid = 0;
-        if (cg) {
-                for (i = 0; !cg_valid && i < devc->channelCount; i++) {
-                  if (cg == devc->analog_groups[i]) {
-                        cg_valid = 1;
-                  }
-                }
-                for (i = 0; !cg_valid && i < devc->digitalPorts; i++) {
-                  if (cg == devc->digital_groups[i]) {
-                        cg_valid = 1;
-                  }
-                }
-        }
-        if (!cg_valid) { 
+        if (cg && !g_slist_find(sdi->channel_groups, cg)) {
                 sr_err("Invalid channel group specified.");
                 return SR_ERR;
         }
 
+
+        switch (key) {
+        case SR_CONF_DEVICE_OPTIONS:
+                if (!cg) {
+                        sr_err("No channel group specified.");
+                        return SR_ERR_CHANNEL_GROUP;
+                }
+                for (i = 0; i < devc->channelCount; i++) {
+                        if (cg == devc->analog_groups[i]) {
+                                *data = g_variant_new_fixed_array(G_VARIANT_TYPE_INT32,
+                                        analog_hwcaps, ARRAY_SIZE(analog_hwcaps), sizeof(int32_t));
+                                return SR_OK;
+                        }
+                }
+                for (i = 0; i < devc->digitalPorts; i++) {
+                        if (cg == devc->digital_groups[i]) {
+                                *data = g_variant_new_fixed_array(G_VARIANT_TYPE_INT32,
+                                        digital_hwcaps, ARRAY_SIZE(digital_hwcaps), sizeof(int32_t));
+                                return SR_OK;
+                        }
+                }
+                return SR_ERR_NA;
+                break;
+        case SR_CONF_COUPLING:
+                if (!cg) {
+                        sr_err("No channel group specified.");
+                        return SR_ERR_CHANNEL_GROUP;
+                }
+                *data = g_variant_new_strv(coupling, ARRAY_SIZE(coupling));
+                break;
+
         // TODO
 
-        return SR_ERR_NA;
+        default:
+                return SR_ERR_NA;
+        }
+
+        return SR_OK;
 }
 
 static int dev_acquisition_start(const struct sr_dev_inst *sdi, void *cb_data)
