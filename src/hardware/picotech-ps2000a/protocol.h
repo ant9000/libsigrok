@@ -104,6 +104,8 @@ typedef struct
 	int16_t				AWGFileSize;
 	CHANNEL_SETTINGS		channelSettings [PS2000A_MAX_CHANNELS];
 	int16_t				digitalPorts;
+        struct sr_channel_group         **analog_groups;
+        struct sr_channel_group         **digital_groups;
 } UNIT;
 
 /*
