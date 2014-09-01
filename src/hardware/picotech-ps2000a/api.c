@@ -220,7 +220,7 @@ static int config_list(int key, GVariant **data, const struct sr_dev_inst *sdi,
                 const struct sr_channel_group *cg)
 {
         UNIT *devc = NULL;
-        unsigned int i;
+        int i;
 
         if (sdi)
                 devc = sdi->priv;
