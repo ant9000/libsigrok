@@ -140,6 +140,7 @@ DRIVER([Tondaj SL-814], [tondaj-sl-814])
 DRIVER([UNI-T DMM], [uni-t-dmm])
 DRIVER([UNI-T UT32x], [uni-t-ut32x])
 DRIVER([Victor DMM], [victor-dmm])
+DRIVER([Yokogawa DL/DLM], [yokogawa-dlm])
 DRIVER([ZEROPLUS Logic Cube], [zeroplus-logic-cube])
 DRIVER([Picotech PicoScope 2000A], [picotech-ps2000a])
 
@@ -385,6 +386,19 @@ PKG_CHECK_MODULES([glibmm], [glibmm-2.4 >= 2.32.0],
 	[CXXFLAGS="$CXXFLAGS $glibmm_CFLAGS";
 	CXXLIBS="$CXXLIBS $glibmm_LIBS"],
 	[BINDINGS_CXX="no"; cxx_msg="glibmm required"])
+
+# C++ bindings want stoi and stod
+if test "x$BINDINGS_CXX" == "xyes"; then
+	AC_LANG_PUSH([C++])
+	AC_MSG_CHECKING([for stoi and stod])
+	AC_COMPILE_IFELSE([AC_LANG_PROGRAM([#include <string>],
+					   [{ return std::stoi("1")+std::stod("1.0"); }])],
+	       [AC_MSG_RESULT([yes]);
+		AC_DEFINE_UNQUOTED(HAVE_STOI_STOD, [1],
+		[Specifies whether we have the stoi and stod functions.])],
+	       [AC_MSG_RESULT([no])])
+	AC_LANG_POP([C++])
+fi
 
 # PyGObject is needed for the Python bindings.
 PKG_CHECK_MODULES([pygobject], [pygobject-3.0 >= 3.0.0],
@@ -667,6 +681,11 @@ fi
 AM_CONDITIONAL(HW_VICTOR_DMM, test x$HW_VICTOR_DMM = xyes)
 if test "x$HW_VICTOR_DMM" = "xyes"; then
 	AC_DEFINE(HAVE_HW_VICTOR_DMM, 1, [Victor DMM support])
+fi
+
+AM_CONDITIONAL(HW_YOKOGAWA_DLM, test x$HW_YOKOGAWA_DLM = xyes)
+if test "x$HW_YOKOGAWA_DLM" = "xyes"; then
+	AC_DEFINE(HAVE_HW_YOKOGAWA_DLM, 1, [Yokogawa DL/DLM support])
 fi
 
 AM_CONDITIONAL(HW_ZEROPLUS_LOGIC_CUBE, test x$HW_ZEROPLUS_LOGIC_CUBE = xyes)

@@ -332,6 +332,14 @@ libsigrok_la_SOURCES += \
 	src/hardware/victor-dmm/protocol.c \
 	src/hardware/victor-dmm/api.c
 endif
+if HW_YOKOGAWA_DLM
+libsigrok_la_SOURCES += \
+	src/hardware/yokogawa-dlm/protocol.h \
+	src/hardware/yokogawa-dlm/protocol.c \
+	src/hardware/yokogawa-dlm/protocol_wrappers.h \
+	src/hardware/yokogawa-dlm/protocol_wrappers.c \
+	src/hardware/yokogawa-dlm/api.c
+endif
 if HW_ZEROPLUS_LOGIC_CUBE
 libsigrok_la_SOURCES += \
 	src/hardware/zeroplus-logic-cube/analyzer.c \
@@ -521,7 +529,7 @@ $(JJAR): $(JCXX)
 	$(AM_V_at)jar cf $(JJAR) -C $(JDIR) $(JPKG)
 
 $(JLIB): $(JCXX) bindings/cxx/libsigrokxx.la $(library_include_HEADERS)
-	$(AM_V_GEN)$(CXX) $(CXXFLAGS) -L.libs -Lbindings/cxx/.libs \
+	$(AM_V_GEN)$(CXXCOMPILE) -L.libs -Lbindings/cxx/.libs \
 		-fno-strict-aliasing -fPIC -shared $(JCLS)/classes_wrap.cxx \
 		-lsigrokxx -o $(JLIB)
 
@@ -532,13 +540,13 @@ java-install:
 	$(INSTALL) $(JJAR) -t $(datadir)/java
 
 java-clean:
-	rm -f $(JCXX)
-	rm -f $(JCLS)/*.java
-	rm -f $(JCLS)/*.class
-	rm -f $(JINT)/*.class
-	rm -f $(JJAR)
-	rm -f $(JLIB)
-	rm -rf $(JDIR)/doxy/
+	$(AM_V_at)rm -f $(JCXX)
+	$(AM_V_at)rm -f $(JCLS)/*.java
+	$(AM_V_at)rm -f $(JCLS)/*.class
+	$(AM_V_at)rm -f $(JINT)/*.class
+	$(AM_V_at)rm -f $(JJAR)
+	$(AM_V_at)rm -f $(JLIB)
+	$(AM_V_at)rm -rf $(JDIR)/doxy/
 
 java-doc:
 	$(AM_V_at)cd $(srcdir)/$(JDIR) && BUILDDIR=$(abs_builddir)/$(JDIR)/ doxygen Doxyfile 2>/dev/null
