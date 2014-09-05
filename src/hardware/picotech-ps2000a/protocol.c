@@ -33,10 +33,9 @@ void set_info(UNIT *unit)
 
 	if (unit->handle) 
 	{
-		// info = 3 - PICO_VARIANT_INFO
-		ps2000aGetUnitInfo(unit->handle, (int8_t *)line, sizeof(line), &r, 3);
+		ps2000aGetUnitInfo(unit->handle, (int8_t *)line, sizeof(line), &r, PICO_VARIANT_INFO);
 		variant = atoi((char *)line);
-		memcpy(&(unit->modelString),line,sizeof(unit->modelString)==7?7:sizeof(unit->modelString));
+		memcpy(&(unit->modelString),line,sizeof(unit->modelString));
 		//To identify variants.....
 
 		if (strlen(line) == 5)						// A variant unit
@@ -58,8 +57,7 @@ void set_info(UNIT *unit)
 				variant += 0xC000;						// 2205MSO -> 0xE205
 		}
 
-		// info = 4 - PICO_BATCH_AND_SERIAL
-		ps2000aGetUnitInfo(unit->handle, (int8_t *)unit->serial, sizeof (unit->serial), &r, 4);
+		ps2000aGetUnitInfo(unit->handle, (int8_t *)unit->serial, sizeof (unit->serial), &r, PICO_BATCH_AND_SERIAL);
 	}
 
 	switch (variant)
