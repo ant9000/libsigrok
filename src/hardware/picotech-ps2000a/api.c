@@ -205,8 +205,49 @@ static int dev_close(struct sr_dev_inst *sdi)
 static int config_get(int id, GVariant **data, const struct sr_dev_inst *sdi,
                 const struct sr_channel_group *cg)
 {
+        UNIT *devc = NULL;
+        int i;
+
+        if (sdi)
+                devc = sdi->priv;
+
+        switch (id) {
+        case SR_CONF_DEVICE_OPTIONS:
+                if (!cg) {
+                        sr_err("No channel group specified.");
+                        return SR_ERR_CHANNEL_GROUP;
+                }
+                for (i = 0; i < devc->channelCount; i++) {
+                        if (cg == devc->analog_groups[i]) {
+                                // TODO
+                                return SR_OK;
+                        }
+                }
+                for (i = 0; i < devc->digitalPorts; i++) {
+                        if (cg == devc->digital_groups[i]) {
+                                // TODO
+                                return SR_OK;
+                        }
+                }
+                return SR_ERR_NA;
+                break;
+        case SR_CONF_COUPLING:
+                if (!cg) {
+                        sr_err("No channel group specified.");
+                        return SR_ERR_CHANNEL_GROUP;
+                }
+                // TODO
+                return SR_OK;
+                break;
+
         // TODO
+
+        default:
+                return SR_ERR_NA;
+        }
+
         return SR_OK;
+
 }
 
 static int config_set(int id, GVariant *data, const struct sr_dev_inst *sdi,
