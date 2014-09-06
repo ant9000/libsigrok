@@ -134,6 +134,7 @@ static GSList *scan(GSList *options)
                                         devc->digitalPorts);
                                 for (i = 0; i < devc->digitalPorts; i++) {
                                         devc->digital_groups[i] = g_malloc0(sizeof(struct sr_channel_group));
+                                        devc->digital_groups[i]->name = g_strdup_printf("Port %d",i);
                                         for (j = 0; j < 8; j++) {
                                                 if (!(channel_name = g_strdup_printf("D%02d", i*8+j)))
                                                         return NULL; // TODO: better error handling
@@ -145,7 +146,6 @@ static GSList *scan(GSList *options)
                                                         devc->digital_groups[i]->channels, ch);
                                         }
                                         // add the 8 channels in the digital port as a device channel group 
-                                        devc->digital_groups[i]->name = channel_name;
                                         sdi->channel_groups = g_slist_append(sdi->channel_groups,
                                                 devc->digital_groups[i]);
                                 }
