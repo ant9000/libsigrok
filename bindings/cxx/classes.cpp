@@ -71,9 +71,11 @@ shared_ptr<Context> Context::create()
 }
 
 Context::Context() :
+	UserOwned(structure),
 	session(NULL)
 {
 	check(sr_init(&structure));
+
 	struct sr_dev_driver **driver_list = sr_driver_list();
 	if (driver_list)
 		for (int i = 0; driver_list[i]; i++)
@@ -108,8 +110,7 @@ map<string, shared_ptr<Driver>> Context::get_drivers()
 	{
 		auto name = entry.first;
 		auto driver = entry.second;
-		result[name] = static_pointer_cast<Driver>(
-			driver->get_shared_pointer(this));
+		result[name] = driver->get_shared_pointer(this);
 	}
 	return result;
 }
@@ -121,8 +122,7 @@ map<string, shared_ptr<InputFormat>> Context::get_input_formats()
 	{
 		auto name = entry.first;
 		auto input_format = entry.second;
-		result[name] = static_pointer_cast<InputFormat>(
-			input_format->get_shared_pointer(this));
+		result[name] = input_format->get_shared_pointer(this);
 	}
 	return result;
 }
@@ -134,8 +134,7 @@ map<string, shared_ptr<OutputFormat>> Context::get_output_formats()
 	{
 		auto name = entry.first;
 		auto output_format = entry.second;
-		result[name] = static_pointer_cast<OutputFormat>(
-			output_format->get_shared_pointer(this));
+		result[name] = output_format->get_shared_pointer(this);
 	}
 	return result;
 }
@@ -248,7 +247,7 @@ shared_ptr<Input> Context::open_stream(string header)
 }
 
 Driver::Driver(struct sr_dev_driver *structure) :
-	StructureWrapper<Context, struct sr_dev_driver>(structure),
+	ParentOwned(structure),
 	initialized(false)
 {
 }
@@ -315,8 +314,7 @@ vector<shared_ptr<HardwareDevice>> Driver::scan(
 	/* Create list of shared pointers to device instances for return. */
 	vector<shared_ptr<HardwareDevice>> result;
 	for (auto device : devices)
-		result.push_back(static_pointer_cast<HardwareDevice>(
-			device->get_shared_pointer(parent)));
+		result.push_back(device->get_shared_pointer(parent));
 	return result;
 }
 
@@ -417,15 +415,13 @@ vector<shared_ptr<Channel>> Device::get_channels()
 {
 	vector<shared_ptr<Channel>> result;
 	for (auto entry : channels)
-		result.push_back(static_pointer_cast<Channel>(
-			entry.second->get_shared_pointer(get_shared_from_this())));
+		result.push_back(entry.second->get_shared_pointer(get_shared_from_this()));
 	return result;
 }
 
 shared_ptr<Channel> Device::get_channel(struct sr_channel *ptr)
 {
-	return static_pointer_cast<Channel>(
-		channels[ptr]->get_shared_pointer(get_shared_from_this()));
+	return channels[ptr]->get_shared_pointer(get_shared_from_this());
 }
 
 map<string, shared_ptr<ChannelGroup>>
@@ -436,8 +432,7 @@ Device::get_channel_groups()
 	{
 		auto name = entry.first;
 		auto channel_group = entry.second;
-		result[name] = static_pointer_cast<ChannelGroup>(
-			channel_group->get_shared_pointer(get_shared_from_this()));
+		result[name] = channel_group->get_shared_pointer(get_shared_from_this());
 	}
 	return result;
 }
@@ -453,7 +448,7 @@ void Device::close()
 }
 
 HardwareDevice::HardwareDevice(Driver *driver, struct sr_dev_inst *structure) :
-	StructureWrapper(structure),
+	ParentOwned(structure),
 	Device(structure),
 	driver(driver)
 {
@@ -465,17 +460,16 @@ HardwareDevice::~HardwareDevice()
 
 shared_ptr<Device> HardwareDevice::get_shared_from_this()
 {
-	return static_pointer_cast<Device>(
-		static_pointer_cast<HardwareDevice>(shared_from_this()));
+	return static_pointer_cast<Device>(shared_from_this());
 }
 
 shared_ptr<Driver> HardwareDevice::get_driver()
 {
-	return static_pointer_cast<Driver>(driver->get_shared_pointer(parent));
+	return driver->get_shared_pointer(parent);
 }
 
 Channel::Channel(struct sr_channel *structure) :
-	StructureWrapper<Device, struct sr_channel>(structure),
+	ParentOwned(structure),
 	type(ChannelType::get(structure->type))
 {
 }
@@ -516,7 +510,7 @@ unsigned int Channel::get_index()
 
 ChannelGroup::ChannelGroup(Device *device,
 		struct sr_channel_group *structure) :
-	StructureWrapper<Device, struct sr_channel_group>(structure),
+	ParentOwned(structure),
 	Configurable(device->structure->driver, device->structure, structure)
 {
 	for (GSList *entry = structure->channels; entry; entry = entry->next)
@@ -536,13 +530,13 @@ vector<shared_ptr<Channel>> ChannelGroup::get_channels()
 {
 	vector<shared_ptr<Channel>> result;
 	for (auto channel : channels)
-		result.push_back(static_pointer_cast<Channel>(
-			channel->get_shared_pointer(parent)));
+		result.push_back(channel->get_shared_pointer(parent));
 	return result;
 }
 
 Trigger::Trigger(shared_ptr<Context> context, string name) : 
-	structure(sr_trigger_new(name.c_str())), context(context)
+	UserOwned(sr_trigger_new(name.c_str())),
+	context(context)
 {
 	for (auto stage = structure->stages; stage; stage = stage->next)
 		stages.push_back(new TriggerStage((struct sr_trigger_stage *) stage->data));
@@ -565,8 +559,7 @@ vector<shared_ptr<TriggerStage>> Trigger::get_stages()
 {
 	vector<shared_ptr<TriggerStage>> result;
 	for (auto stage : stages)
-		result.push_back(static_pointer_cast<TriggerStage>(
-			stage->get_shared_pointer(this)));
+		result.push_back(stage->get_shared_pointer(this));
 	return result;
 }
 
@@ -574,12 +567,11 @@ shared_ptr<TriggerStage> Trigger::add_stage()
 {
 	auto stage = new TriggerStage(sr_trigger_stage_add(structure));
 	stages.push_back(stage);
-	return static_pointer_cast<TriggerStage>(
-		stage->get_shared_pointer(this));
+	return stage->get_shared_pointer(this);
 }
 
 TriggerStage::TriggerStage(struct sr_trigger_stage *structure) : 
-	StructureWrapper<Trigger, struct sr_trigger_stage>(structure)
+	ParentOwned(structure)
 {
 }
 
@@ -598,8 +590,7 @@ vector<shared_ptr<TriggerMatch>> TriggerStage::get_matches()
 {
 	vector<shared_ptr<TriggerMatch>> result;
 	for (auto match : matches)
-		result.push_back(static_pointer_cast<TriggerMatch>(
-			match->get_shared_pointer(this)));
+		result.push_back(match->get_shared_pointer(this));
 	return result;
 }
 
@@ -616,7 +607,7 @@ void TriggerStage::add_match(shared_ptr<Channel> channel, const TriggerMatchType
 }
 
 TriggerMatch::TriggerMatch(struct sr_trigger_match *structure, shared_ptr<Channel> channel) :
-	StructureWrapper<TriggerStage, struct sr_trigger_match>(structure), channel(channel)
+	ParentOwned(structure), channel(channel)
 {
 }
 
@@ -702,6 +693,7 @@ EventSource::~EventSource()
 }
 
 Session::Session(shared_ptr<Context> context) :
+	UserOwned(structure),
 	context(context), saving(false)
 {
 	check(sr_session_new(&structure));
@@ -709,6 +701,7 @@ Session::Session(shared_ptr<Context> context) :
 }
 
 Session::Session(shared_ptr<Context> context, string filename) :
+	UserOwned(structure),
 	context(context), saving(false)
 {
 	check(sr_session_load(filename.c_str(), &structure));
@@ -948,7 +941,7 @@ void Session::set_trigger(shared_ptr<Trigger> trigger)
 
 Packet::Packet(shared_ptr<Device> device,
 	const struct sr_datafeed_packet *structure) :
-	structure(structure),
+	UserOwned(structure),
 	device(device)
 {
 	switch (structure->type)
@@ -1007,7 +1000,7 @@ PacketPayload::~PacketPayload()
 }
 
 Header::Header(const struct sr_datafeed_header *structure) :
-	StructureWrapper<Packet, const struct sr_datafeed_header>(structure),
+	ParentOwned(structure),
 	PacketPayload()
 {
 }
@@ -1018,10 +1011,7 @@ Header::~Header()
 
 shared_ptr<PacketPayload> Header::get_shared_pointer(Packet *parent)
 {
-	return static_pointer_cast<PacketPayload>(
-		static_pointer_cast<Header>(
-		StructureWrapper<Packet, const struct sr_datafeed_header>::
-			get_shared_pointer(parent)));
+	return static_pointer_cast<PacketPayload>(get_shared_pointer(parent));
 }
 
 int Header::get_feed_version()
@@ -1037,7 +1027,7 @@ Glib::TimeVal Header::get_start_time()
 }
 
 Meta::Meta(const struct sr_datafeed_meta *structure) :
-	StructureWrapper<Packet, const struct sr_datafeed_meta>(structure),
+	ParentOwned(structure),
 	PacketPayload()
 {
 }
@@ -1048,10 +1038,7 @@ Meta::~Meta()
 
 shared_ptr<PacketPayload> Meta::get_shared_pointer(Packet *parent)
 {
-	return static_pointer_cast<PacketPayload>(
-		static_pointer_cast<Meta>(
-		StructureWrapper<Packet, const struct sr_datafeed_meta>::
-			get_shared_pointer(parent)));
+	return static_pointer_cast<PacketPayload>(get_shared_pointer(parent));
 }
 
 map<const ConfigKey *, Glib::VariantBase> Meta::get_config()
@@ -1066,7 +1053,7 @@ map<const ConfigKey *, Glib::VariantBase> Meta::get_config()
 }
 
 Logic::Logic(const struct sr_datafeed_logic *structure) :
-	StructureWrapper<Packet, const struct sr_datafeed_logic>(structure),
+	ParentOwned(structure),
 	PacketPayload()
 {
 }
@@ -1077,10 +1064,7 @@ Logic::~Logic()
 
 shared_ptr<PacketPayload> Logic::get_shared_pointer(Packet *parent)
 {
-	return static_pointer_cast<PacketPayload>(
-		static_pointer_cast<Logic>(
-		StructureWrapper<Packet, const struct sr_datafeed_logic>::
-			get_shared_pointer(parent)));
+	return static_pointer_cast<PacketPayload>(get_shared_pointer(parent));
 }
 
 void *Logic::get_data_pointer()
@@ -1099,7 +1083,7 @@ unsigned int Logic::get_unit_size()
 }
 
 Analog::Analog(const struct sr_datafeed_analog *structure) :
-	StructureWrapper<Packet, const struct sr_datafeed_analog>(structure),
+	ParentOwned(structure),
 	PacketPayload()
 {
 }
@@ -1110,10 +1094,7 @@ Analog::~Analog()
 
 shared_ptr<PacketPayload> Analog::get_shared_pointer(Packet *parent)
 {
-	return static_pointer_cast<PacketPayload>(
-		static_pointer_cast<Analog>(
-		StructureWrapper<Packet, const struct sr_datafeed_analog>::
-			get_shared_pointer(parent)));
+	return static_pointer_cast<PacketPayload>(get_shared_pointer(parent));
 }
 
 float *Analog::get_data_pointer()
@@ -1151,7 +1132,7 @@ vector<const QuantityFlag *> Analog::get_mq_flags()
 }
 
 InputFormat::InputFormat(const struct sr_input_module *structure) :
-	StructureWrapper<Context, const struct sr_input_module>(structure)
+	ParentOwned(structure)
 {
 }
 
@@ -1192,7 +1173,7 @@ shared_ptr<Input> InputFormat::create_input(
 }
 
 Input::Input(shared_ptr<Context> context, const struct sr_input *structure) :
-	structure(structure),
+	UserOwned(structure),
 	context(context),
 	device(nullptr)
 {
@@ -1208,8 +1189,7 @@ shared_ptr<InputDevice> Input::get_device()
 		device = new InputDevice(shared_from_this(), sdi);
 	}
 
-	return static_pointer_cast<InputDevice>(
-		device->get_shared_pointer(shared_from_this()));
+	return device->get_shared_pointer(shared_from_this());
 }
 
 void Input::send(string data)
@@ -1229,7 +1209,7 @@ Input::~Input()
 
 InputDevice::InputDevice(shared_ptr<Input> input,
 		struct sr_dev_inst *structure) :
-	StructureWrapper(structure),
+	ParentOwned(structure),
 	Device(structure),
 	input(input)
 {
@@ -1241,13 +1221,12 @@ InputDevice::~InputDevice()
 
 shared_ptr<Device> InputDevice::get_shared_from_this()
 {
-	return static_pointer_cast<Device>(
-		static_pointer_cast<InputDevice>(shared_from_this()));
+	return static_pointer_cast<Device>(shared_from_this());
 }
 
 Option::Option(const struct sr_option *structure,
 		shared_ptr<const struct sr_option *> structure_array) :
-	structure(structure),
+	UserOwned(structure),
 	structure_array(structure_array)
 {
 }
@@ -1285,7 +1264,7 @@ vector<Glib::VariantBase> Option::get_values()
 }
 
 OutputFormat::OutputFormat(const struct sr_output_module *structure) :
-	StructureWrapper<Context, const struct sr_output_module>(structure)
+	ParentOwned(structure)
 {
 }
 
@@ -1319,15 +1298,13 @@ shared_ptr<Output> OutputFormat::create_output(
 	shared_ptr<Device> device, map<string, Glib::VariantBase> options)
 {
 	return shared_ptr<Output>(
-		new Output(
-			static_pointer_cast<OutputFormat>(shared_from_this()),
-				device, options),
+		new Output(shared_from_this(), device, options),
 		Output::Deleter());
 }
 
 Output::Output(shared_ptr<OutputFormat> format,
 		shared_ptr<Device> device, map<string, Glib::VariantBase> options) :
-	structure(sr_output_new(format->structure,
+	UserOwned(sr_output_new(format->structure,
 		map_to_hash_variant(options), device->structure)),
 	format(format), device(device), options(options)
 {

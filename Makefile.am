@@ -91,6 +91,10 @@ if NEED_VISA
 libsigrok_la_SOURCES += \
 	src/scpi/scpi_visa.c
 endif
+if NEED_GPIB
+libsigrok_la_SOURCES += \
+	src/scpi/scpi_libgpib.c
+endif
 
 # Hardware (DMM chip parsers)
 libsigrok_la_SOURCES += \

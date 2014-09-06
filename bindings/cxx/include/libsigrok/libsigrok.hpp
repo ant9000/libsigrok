@@ -124,9 +124,9 @@ public:
 	const char *what() const throw();
 };
 
-/* Base template for most classes which wrap a struct type from libsigrok. */
-template <class Parent, typename Struct> class SR_API StructureWrapper :
-	public enable_shared_from_this<StructureWrapper<Parent, Struct> >
+/* Base template for classes whose resources are owned by a parent object. */
+template <class Class, class Parent, typename Struct>
+class SR_API ParentOwned
 {
 protected:
 	/*  Parent object which owns this child object's underlying structure.
@@ -144,27 +144,40 @@ protected:
 		references to both the parent and all its children are gone. */
 	shared_ptr<Parent> parent;
 
+	/* Weak pointer for shared_from_this() implementation. */
+	weak_ptr<Class> weak_this;
+
 public:
-	shared_ptr<StructureWrapper<Parent, Struct> >
-	get_shared_pointer(Parent *parent)
+	/* Note, this implementation will create a new smart_ptr if none exists. */
+	shared_ptr<Class> shared_from_this()
 	{
-		if (!parent)
-			throw Error(SR_ERR_BUG);
-		this->parent = static_pointer_cast<Parent>(parent->shared_from_this());
-		return shared_ptr<StructureWrapper<Parent, Struct> >(
-			this, reset_parent);
+		shared_ptr<Class> shared;
+
+		if (!(shared = weak_this.lock()))
+		{
+			shared = shared_ptr<Class>((Class *) this, reset_parent);
+			weak_this = shared;
+		}
+
+		return shared;
 	}
-	shared_ptr<StructureWrapper<Parent, Struct> >
-	get_shared_pointer(shared_ptr<Parent> parent)
+
+	shared_ptr<Class> get_shared_pointer(shared_ptr<Parent> parent)
 	{
 		if (!parent)
 			throw Error(SR_ERR_BUG);
 		this->parent = parent;
-		return shared_ptr<StructureWrapper<Parent, Struct> >(
-			this, reset_parent);
+		return shared_from_this();
+	}
+
+	shared_ptr<Class> get_shared_pointer(Parent *parent)
+	{
+		if (!parent)
+			throw Error(SR_ERR_BUG);
+		return get_shared_pointer(parent->shared_from_this());
 	}
 protected:
-	static void reset_parent(StructureWrapper<Parent, Struct> *object)
+	static void reset_parent(Class *object)
 	{
 		if (!object->parent)
 			throw Error(SR_ERR_BUG);
@@ -173,17 +186,45 @@ protected:
 
 	Struct *structure;
 
-	StructureWrapper<Parent, Struct>(Struct *structure) :
+	ParentOwned<Class, Parent, Struct>(Struct *structure) :
 		structure(structure)
 	{
 	}
+};
+
+/* Base template for classes whose resources are owned by the user. */
+template <class Class, typename Struct>
+class SR_API UserOwned : public enable_shared_from_this<Class>
+{
+public:
+	shared_ptr<Class> shared_from_this()
+	{
+		auto shared = enable_shared_from_this<Class>::shared_from_this();
+		if (!shared)
+			throw Error(SR_ERR_BUG);
+		return shared;
+	}
+protected:
+	Struct *structure;
+
+	UserOwned<Class, Struct>(Struct *structure) :
+		structure(structure)
+	{
+	}
+
+	/* Deleter needed to allow shared_ptr use with protected destructor. */
+	class Deleter
+	{
+	public:
+		void operator()(Class *object) { delete object; }
+	};
 };
 
 /** Type of log callback */
 typedef function<void(const LogLevel *, string message)> LogCallbackFunction;
 
 /** The global libsigrok context */
-class SR_API Context : public enable_shared_from_this<Context>
+class SR_API Context : public UserOwned<Context, struct sr_context>
 {
 public:
 	/** Create new context */
@@ -228,7 +269,6 @@ public:
 	 * @param header Initial data from stream. */
 	shared_ptr<Input> open_stream(string header);
 protected:
-	struct sr_context *structure;
 	map<string, Driver *> drivers;
 	map<string, InputFormat *> input_formats;
 	map<string, OutputFormat *> output_formats;
@@ -236,19 +276,14 @@ protected:
 	LogCallbackFunction log_callback;
 	Context();
 	~Context();
-	/** Deleter needed to allow shared_ptr use with protected destructor. */
-	class Deleter
-	{
-	public:
-		void operator()(Context *context) { delete context; }
-	};
 	friend class Deleter;
 	friend class Session;
 	friend class Driver;
 };
 
 /** A hardware driver provided by the library */
-class SR_API Driver : public StructureWrapper<Context, struct sr_dev_driver>
+class SR_API Driver :
+	public ParentOwned<Driver, Context, struct sr_dev_driver>
 {
 public:
 	/** Name of this driver. */
@@ -338,7 +373,7 @@ protected:
 
 /** A real hardware device, connected via a driver */
 class SR_API HardwareDevice :
-	public StructureWrapper<Context, struct sr_dev_inst>,
+	public ParentOwned<HardwareDevice, Context, struct sr_dev_inst>,
 	public Device
 {
 public:
@@ -354,7 +389,8 @@ protected:
 };
 
 /** A channel on a device */
-class SR_API Channel : public StructureWrapper<Device, struct sr_channel>
+class SR_API Channel :
+	public ParentOwned<Channel, Device, struct sr_channel>
 {
 public:
 	/** Current name of this channel. */
@@ -383,7 +419,7 @@ protected:
 
 /** A group of channels on a device, which share some configuration */
 class SR_API ChannelGroup :
-	public StructureWrapper<Device, struct sr_channel_group>,
+	public ParentOwned<ChannelGroup, Device, struct sr_channel_group>,
 	public Configurable
 {
 public:
@@ -399,7 +435,7 @@ protected:
 };
 
 /** A trigger configuration */
-class SR_API Trigger : public enable_shared_from_this<Trigger>
+class SR_API Trigger : public UserOwned<Trigger, struct sr_trigger>
 {
 public:
 	/** Name of this trigger configuration. */
@@ -411,21 +447,16 @@ public:
 protected:
 	Trigger(shared_ptr<Context> context, string name);
 	~Trigger();
-	struct sr_trigger *structure;
 	shared_ptr<Context> context;
 	vector<TriggerStage *> stages;
-	/** Deleter needed to allow shared_ptr use with protected destructor. */
-	class Deleter
-	{
-	public:
-		void operator()(Trigger *trigger) { delete trigger; }
-	};
+	friend class Deleter;
 	friend class Context;
 	friend class Session;
 };
 
 /** A stage in a trigger configuration */
-class SR_API TriggerStage : public StructureWrapper<Trigger, struct sr_trigger_stage>
+class SR_API TriggerStage :
+	public ParentOwned<TriggerStage, Trigger, struct sr_trigger_stage>
 {
 public:
 	/** Index number of this stage. */
@@ -449,7 +480,8 @@ protected:
 };
 
 /** A match condition in a trigger configuration  */
-class SR_API TriggerMatch : public StructureWrapper<TriggerStage, struct sr_trigger_match>
+class SR_API TriggerMatch :
+	public ParentOwned<TriggerMatch, TriggerStage, struct sr_trigger_match>
 {
 public:
 	/** Channel this condition matches on. */
@@ -549,7 +581,7 @@ protected:
 };
 
 /** A sigrok session */
-class SR_API Session 
+class SR_API Session : public UserOwned<Session, struct sr_session>
 {
 public:
 	/** Add a device to this session.
@@ -593,7 +625,6 @@ protected:
 	Session(shared_ptr<Context> context);
 	Session(shared_ptr<Context> context, string filename);
 	~Session();
-	struct sr_session *structure;
 	const shared_ptr<Context> context;
 	map<const struct sr_dev_inst *, shared_ptr<Device> > devices;
 	vector<DatafeedCallbackData *> datafeed_callbacks;
@@ -603,19 +634,13 @@ protected:
 	string save_filename;
 	uint64_t save_samplerate;
 	shared_ptr<Trigger> trigger;
-	/** Deleter needed to allow shared_ptr use with protected destructor. */
-	class Deleter
-	{
-	public:
-		void operator()(Session *session) { delete session; }
-	};
 	friend class Deleter;
 	friend class Context;
 	friend class DatafeedCallbackData;
 };
 
 /** A packet on the session datafeed */
-class SR_API Packet : public enable_shared_from_this<Packet>
+class SR_API Packet : public UserOwned<Packet, const struct sr_datafeed_packet>
 {
 public:
 	/** Type of this packet. */
@@ -626,15 +651,8 @@ protected:
 	Packet(shared_ptr<Device> device,
 		const struct sr_datafeed_packet *structure);
 	~Packet();
-	const struct sr_datafeed_packet *structure;
 	shared_ptr<Device> device;
 	PacketPayload *payload;
-	/** Deleter needed to allow shared_ptr use with protected destructor. */
-	class Deleter
-	{
-	public:
-		void operator()(Packet *packet) { delete packet; }
-	};
 	friend class Deleter;
 	friend class Session;
 	friend class Output;
@@ -665,7 +683,7 @@ protected:
 
 /** Payload of a datafeed header packet */
 class SR_API Header :
-	public StructureWrapper<Packet, const struct sr_datafeed_header>,
+	public ParentOwned<Header, Packet, const struct sr_datafeed_header>,
 	public PacketPayload
 {
 public:
@@ -682,7 +700,7 @@ protected:
 
 /** Payload of a datafeed metadata packet */
 class SR_API Meta :
-	public StructureWrapper<Packet, const struct sr_datafeed_meta>,
+	public ParentOwned<Meta, Packet, const struct sr_datafeed_meta>,
 	public PacketPayload
 {
 public:
@@ -698,7 +716,7 @@ protected:
 
 /** Payload of a datafeed packet with logic data */
 class SR_API Logic :
-	public StructureWrapper<Packet, const struct sr_datafeed_logic>,
+	public ParentOwned<Logic, Packet, const struct sr_datafeed_logic>,
 	public PacketPayload
 {
 public:
@@ -717,7 +735,7 @@ protected:
 
 /** Payload of a datafeed packet with analog data */
 class SR_API Analog :
-	public StructureWrapper<Packet, const struct sr_datafeed_analog>,
+	public ParentOwned<Analog, Packet, const struct sr_datafeed_analog>,
 	public PacketPayload
 {
 public:
@@ -742,7 +760,7 @@ protected:
 
 /** An input format supported by the library */
 class SR_API InputFormat :
-	public StructureWrapper<Context, const struct sr_input_module>
+	public ParentOwned<InputFormat, Context, const struct sr_input_module>
 {
 public:
 	/** Name of this input format. */
@@ -762,7 +780,7 @@ protected:
 };
 
 /** An input instance (an input format applied to a file or stream) */
-class SR_API Input : public enable_shared_from_this<Input>
+class SR_API Input : public UserOwned<Input, const struct sr_input>
 {
 public:
 	/** Virtual device associated with this input. */
@@ -773,16 +791,8 @@ public:
 protected:
 	Input(shared_ptr<Context> context, const struct sr_input *structure);
 	~Input();
-	shared_ptr<Device> get_shared_from_this();
-	const struct sr_input *structure;
 	shared_ptr<Context> context;
 	InputDevice *device;
-	/** Deleter needed to allow shared_ptr use with protected destructor. */
-	class Deleter
-	{
-	public:
-		void operator()(Input *input) { delete input; }
-	};
 	friend class Deleter;
 	friend class Context;
 	friend class InputFormat;
@@ -790,7 +800,7 @@ protected:
 
 /** A virtual device associated with an input */
 class SR_API InputDevice :
-	public StructureWrapper<Input, struct sr_dev_inst>,
+	public ParentOwned<InputDevice, Input, struct sr_dev_inst>,
 	public Device
 {
 protected:
@@ -798,18 +808,11 @@ protected:
 	~InputDevice();
 	shared_ptr<Device> get_shared_from_this();
 	shared_ptr<Input> input;
-	/** Deleter needed to allow shared_ptr use with protected destructor. */
-	class Deleter
-	{
-	public:
-		void operator()(InputDevice *device) { delete device; }
-	};
-	friend class Deleter;
 	friend class Input;
 };
 
 /** An option used by an output format */
-class SR_API Option
+class SR_API Option : public UserOwned<Option, const struct sr_option>
 {
 public:
 	/** Short name of this option suitable for command line usage. */
@@ -826,14 +829,7 @@ protected:
 	Option(const struct sr_option *structure,
 		shared_ptr<const struct sr_option *> structure_array);
 	~Option();
-	const struct sr_option *structure;
 	shared_ptr<const struct sr_option *> structure_array;
-	/** Deleter needed to allow shared_ptr use with protected destructor. */
-	class Deleter
-	{
-	public:
-		void operator()(Option *option) { delete option; }
-	};
 	friend class Deleter;
 	friend class InputFormat;
 	friend class OutputFormat;
@@ -841,7 +837,7 @@ protected:
 
 /** An output format supported by the library */
 class SR_API OutputFormat :
-	public StructureWrapper<Context, const struct sr_output_module>
+	public ParentOwned<OutputFormat, Context, const struct sr_output_module>
 {
 public:
 	/** Name of this output format. */
@@ -863,7 +859,7 @@ protected:
 };
 
 /** An output instance (an output format applied to a device) */
-class SR_API Output
+class SR_API Output : public UserOwned<Output, const struct sr_output>
 {
 public:
 	/** Update output with data from the given packet.
@@ -874,16 +870,9 @@ protected:
 	Output(shared_ptr<OutputFormat> format,
 		shared_ptr<Device> device, map<string, Glib::VariantBase> options);
 	~Output();
-	const struct sr_output *structure;
 	const shared_ptr<OutputFormat> format;
 	const shared_ptr<Device> device;
 	const map<string, Glib::VariantBase> options;
-	/** Deleter needed to allow shared_ptr use with protected destructor. */
-	class Deleter
-	{
-	public:
-		void operator()(Output *output) { delete output; }
-	};
 	friend class Deleter;
 	friend class OutputFormat;
 };

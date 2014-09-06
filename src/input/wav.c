@@ -63,15 +63,15 @@ static int parse_wav_header(GString *buf, struct context *inc)
 	samplerate = RL32(buf->str + 24);
 
 	samplesize = RL16(buf->str + 32);
-	if (samplesize != 1 && samplesize != 2 && samplesize != 4) {
-		sr_err("Only 8, 16 or 32 bits per sample supported.");
-		return SR_ERR_DATA;
-	}
-
 	num_channels = RL16(buf->str + 22);
 	if (num_channels == 0)
 		return SR_ERR;
 	unitsize = samplesize / num_channels;
+	if (unitsize != 1 && unitsize != 2 && unitsize != 4) {
+		sr_err("Only 8, 16 or 32 bits per sample supported.");
+		return SR_ERR_DATA;
+	}
+
 
 	if (fmt_code == WAVE_FORMAT_PCM) {
 	} else if (fmt_code == WAVE_FORMAT_IEEE_FLOAT) {
@@ -100,6 +100,10 @@ static int parse_wav_header(GString *buf, struct context *inc)
 		fmt_code = RL16(buf->str + 44);
 		if (fmt_code != WAVE_FORMAT_PCM && fmt_code != WAVE_FORMAT_IEEE_FLOAT) {
 			sr_err("Only PCM and floating point samples are supported.");
+			return SR_ERR_DATA;
+		}
+		if (fmt_code == WAVE_FORMAT_IEEE_FLOAT && unitsize != 4) {
+			sr_err("only 32-bit floats supported.");
 			return SR_ERR_DATA;
 		}
 	} else {
@@ -244,8 +248,9 @@ static void send_chunk(const struct sr_input *in, int offset, int num_samples)
 		} else {
 			/* BINARY32 float */
 #ifdef WORDS_BIGENDIAN
+			int i;
 			for (i = 0; i < inc->unitsize; i++)
-				d[i] = s[inc->unitsize - i];
+				d[i] = s[inc->unitsize - 1 - i];
 #else
 			memcpy(d, s, inc->unitsize);
 #endif
