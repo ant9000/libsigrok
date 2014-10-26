@@ -29,27 +29,27 @@
 #include "libsigrok-internal.h"
 #include "protocol.h"
 
-static const int32_t hwopts[] = {
+static const uint32_t scanopts[] = {
 	SR_CONF_CONN,
 	SR_CONF_SERIALCOMM
 };
 
-static const int32_t hwcaps[] = {
+static const uint32_t devopts[] = {
 	SR_CONF_OSCILLOSCOPE,
-	SR_CONF_TIMEBASE,
-	SR_CONF_TRIGGER_SOURCE,
-	SR_CONF_TRIGGER_SLOPE,
-	SR_CONF_HORIZ_TRIGGERPOS,
-	SR_CONF_NUM_TIMEBASE,
-	SR_CONF_LIMIT_FRAMES,
-	SR_CONF_SAMPLERATE,
+	SR_CONF_LIMIT_FRAMES | SR_CONF_SET,
+	SR_CONF_TIMEBASE | SR_CONF_GET | SR_CONF_SET | SR_CONF_LIST,
+	SR_CONF_TRIGGER_SOURCE | SR_CONF_GET | SR_CONF_SET | SR_CONF_LIST,
+	SR_CONF_TRIGGER_SLOPE | SR_CONF_GET | SR_CONF_SET,
+	SR_CONF_HORIZ_TRIGGERPOS | SR_CONF_SET,
+	SR_CONF_NUM_TIMEBASE | SR_CONF_GET,
+	SR_CONF_SAMPLERATE | SR_CONF_GET,
 };
 
-static const int32_t analog_hwcaps[] = {
-	SR_CONF_NUM_VDIV,
-	SR_CONF_VDIV,
-	SR_CONF_COUPLING,
-	SR_CONF_DATA_SOURCE,
+static const uint32_t analog_devopts[] = {
+	SR_CONF_NUM_VDIV | SR_CONF_GET,
+	SR_CONF_VDIV | SR_CONF_GET | SR_CONF_SET | SR_CONF_LIST,
+	SR_CONF_COUPLING | SR_CONF_GET | SR_CONF_SET | SR_CONF_LIST,
+	SR_CONF_DATA_SOURCE | SR_CONF_GET | SR_CONF_SET | SR_CONF_LIST,
 };
 
 static const uint64_t timebases[][2] = {
@@ -237,12 +237,13 @@ static struct sr_dev_driver *di = &rigol_ds_driver_info;
 static void clear_helper(void *priv)
 {
 	struct dev_context *devc;
+	unsigned int i;
 
 	devc = priv;
 	g_free(devc->data);
 	g_free(devc->buffer);
-	g_free(devc->coupling[0]);
-	g_free(devc->coupling[1]);
+	for (i = 0; i < ARRAY_SIZE(devc->coupling); i++)
+		g_free(devc->coupling[i]);
 	g_free(devc->trigger_source);
 	g_free(devc->trigger_slope);
 	g_free(devc->analog_groups);
@@ -290,7 +291,7 @@ static struct sr_dev_inst *probe_device(struct sr_scpi_dev_inst *scpi)
 		}
 	}
 
-	if (!model || !(sdi = sr_dev_inst_new(0, SR_ST_ACTIVE,
+	if (!model || !(sdi = sr_dev_inst_new(SR_ST_ACTIVE,
 					      model->series->vendor->name,
 						  model->name,
 						  hw_info->firmware_version))) {
@@ -299,9 +300,9 @@ static struct sr_dev_inst *probe_device(struct sr_scpi_dev_inst *scpi)
 	}
 
 	sdi->conn = scpi;
-
 	sdi->driver = di;
 	sdi->inst_type = SR_INST_SCPI;
+	sdi->serial_num = g_strdup(hw_info->serial_number);
 
 	if (!(devc = g_try_malloc0(sizeof(struct dev_context))))
 		return NULL;
@@ -356,7 +357,7 @@ static struct sr_dev_inst *probe_device(struct sr_scpi_dev_inst *scpi)
 	if (devc->model->has_digital) {
 		devc->digital_group = g_malloc0(sizeof(struct sr_channel_group*));
 
-		for (i = 0; i < 16; i++) {
+		for (i = 0; i < ARRAY_SIZE(devc->digital_channels); i++) {
 			if (!(channel_name = g_strdup_printf("D%d", i)))
 				return NULL;
 			ch = sr_channel_new(i, SR_CHANNEL_LOGIC, TRUE, channel_name);
@@ -488,7 +489,7 @@ static int digital_frame_size(const struct sr_dev_inst *sdi)
 	}
 }
 
-static int config_get(int id, GVariant **data, const struct sr_dev_inst *sdi,
+static int config_get(uint32_t key, GVariant **data, const struct sr_dev_inst *sdi,
 		const struct sr_channel_group *cg)
 {
 	struct dev_context *devc;
@@ -520,7 +521,7 @@ static int config_get(int id, GVariant **data, const struct sr_dev_inst *sdi,
 		}
 	}
 
-	switch (id) {
+	switch (key) {
 	case SR_CONF_NUM_TIMEBASE:
 		*data = g_variant_new_int32(devc->model->series->num_horizontal_divs);
 		break;
@@ -608,7 +609,7 @@ static int config_get(int id, GVariant **data, const struct sr_dev_inst *sdi,
 	return SR_OK;
 }
 
-static int config_set(int id, GVariant *data, const struct sr_dev_inst *sdi,
+static int config_set(uint32_t key, GVariant *data, const struct sr_dev_inst *sdi,
 		const struct sr_channel_group *cg)
 {
 	struct dev_context *devc;
@@ -632,7 +633,7 @@ static int config_set(int id, GVariant *data, const struct sr_dev_inst *sdi,
 	}
 
 	ret = SR_OK;
-	switch (id) {
+	switch (key) {
 	case SR_CONF_LIMIT_FRAMES:
 		devc->limit_frames = g_variant_get_uint64(data);
 		break;
@@ -702,7 +703,7 @@ static int config_set(int id, GVariant *data, const struct sr_dev_inst *sdi,
 			return SR_ERR_CHANNEL_GROUP;
 		}
 		g_variant_get(data, "(tt)", &p, &q);
-		for (i = 0; i < 2; i++) {
+		for (i = 0; i < devc->model->analog_channels; i++) {
 			if (cg == devc->analog_groups[i]) {
 				for (j = 0; j < ARRAY_SIZE(vdivs); j++) {
 					if (vdivs[j][0] != p || vdivs[j][1] != q)
@@ -723,7 +724,7 @@ static int config_set(int id, GVariant *data, const struct sr_dev_inst *sdi,
 			return SR_ERR_CHANNEL_GROUP;
 		}
 		tmp_str = g_variant_get_string(data, NULL);
-		for (i = 0; i < 2; i++) {
+		for (i = 0; i < devc->model->analog_channels; i++) {
 			if (cg == devc->analog_groups[i]) {
 				for (j = 0; j < ARRAY_SIZE(coupling); j++) {
 					if (!strcmp(tmp_str, coupling[j])) {
@@ -758,7 +759,7 @@ static int config_set(int id, GVariant *data, const struct sr_dev_inst *sdi,
 	return ret;
 }
 
-static int config_list(int key, GVariant **data, const struct sr_dev_inst *sdi,
+static int config_list(uint32_t key, GVariant **data, const struct sr_dev_inst *sdi,
 		const struct sr_channel_group *cg)
 {
 	GVariant *tuple, *rational[2];
@@ -770,12 +771,12 @@ static int config_list(int key, GVariant **data, const struct sr_dev_inst *sdi,
 		devc = sdi->priv;
 
 	if (key == SR_CONF_SCAN_OPTIONS) {
-		*data = g_variant_new_fixed_array(G_VARIANT_TYPE_INT32,
-				hwopts, ARRAY_SIZE(hwopts), sizeof(int32_t));
+		*data = g_variant_new_fixed_array(G_VARIANT_TYPE_UINT32,
+				scanopts, ARRAY_SIZE(scanopts), sizeof(uint32_t));
 		return SR_OK;
 	} else if (key == SR_CONF_DEVICE_OPTIONS && cg == NULL) {
-		*data = g_variant_new_fixed_array(G_VARIANT_TYPE_INT32,
-			hwcaps, ARRAY_SIZE(hwcaps), sizeof(int32_t));
+		*data = g_variant_new_fixed_array(G_VARIANT_TYPE_UINT32,
+				devopts, ARRAY_SIZE(devopts), sizeof(uint32_t));
 		return SR_OK;
 	}
 
@@ -785,8 +786,10 @@ static int config_list(int key, GVariant **data, const struct sr_dev_inst *sdi,
 
 	/* If a channel group is specified, it must be a valid one. */
 	if (cg) {
-		if (cg != devc->analog_groups[0]
-				&& cg != devc->analog_groups[1]) {
+		for (i = 0; i < devc->model->analog_channels; i++)
+			if (cg == devc->analog_groups[i])
+				break;
+		if (i >= devc->model->analog_channels) {
 			sr_err("Invalid channel group specified.");
 			return SR_ERR;
 		}
@@ -799,14 +802,14 @@ static int config_list(int key, GVariant **data, const struct sr_dev_inst *sdi,
 			return SR_ERR_CHANNEL_GROUP;
 		}
 		if (cg == devc->digital_group) {
-			*data = g_variant_new_fixed_array(G_VARIANT_TYPE_INT32,
-				NULL, 0, sizeof(int32_t));
+			*data = g_variant_new_fixed_array(G_VARIANT_TYPE_UINT32,
+				NULL, 0, sizeof(uint32_t));
 			return SR_OK;
 		} else {
-			for (i = 0; i < 2; i++) {
+			for (i = 0; i < devc->model->analog_channels; i++) {
 				if (cg == devc->analog_groups[i]) {
-					*data = g_variant_new_fixed_array(G_VARIANT_TYPE_INT32,
-						analog_hwcaps, ARRAY_SIZE(analog_hwcaps), sizeof(int32_t));
+					*data = g_variant_new_fixed_array(G_VARIANT_TYPE_UINT32,
+						analog_devopts, ARRAY_SIZE(analog_devopts), sizeof(uint32_t));
 					return SR_OK;
 				}
 			}

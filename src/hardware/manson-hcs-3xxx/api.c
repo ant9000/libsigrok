@@ -26,24 +26,24 @@
 
 #include "protocol.h"
 
-static const int32_t hwopts[] = {
+static const uint32_t scanopts[] = {
 	SR_CONF_CONN,
 	SR_CONF_SERIALCOMM,
 };
 
-static const int32_t devopts[] = {
+static const uint32_t devopts[] = {
 	/* Device class */
 	SR_CONF_POWER_SUPPLY,
 	/* Aquisition modes. */
-	SR_CONF_LIMIT_SAMPLES,
-	SR_CONF_LIMIT_MSEC,
 	SR_CONF_CONTINUOUS,
+	SR_CONF_LIMIT_SAMPLES | SR_CONF_GET | SR_CONF_SET,
+	SR_CONF_LIMIT_MSEC | SR_CONF_GET | SR_CONF_SET,
 	/* Device configuration */
-	SR_CONF_OUTPUT_CURRENT,
-	SR_CONF_OUTPUT_CURRENT_MAX,
-	SR_CONF_OUTPUT_ENABLED,
-	SR_CONF_OUTPUT_VOLTAGE,
-	SR_CONF_OUTPUT_VOLTAGE_MAX,
+	SR_CONF_OUTPUT_VOLTAGE | SR_CONF_GET,
+	SR_CONF_OUTPUT_VOLTAGE_TARGET | SR_CONF_GET | SR_CONF_SET | SR_CONF_LIST,
+	SR_CONF_OUTPUT_CURRENT | SR_CONF_GET,
+	SR_CONF_OUTPUT_CURRENT_LIMIT | SR_CONF_GET | SR_CONF_SET | SR_CONF_LIST,
+	SR_CONF_OUTPUT_ENABLED | SR_CONF_GET | SR_CONF_SET,
 };
 
 /* Note: All models have one power supply output only. */
@@ -150,7 +150,7 @@ static GSList *scan(GSList *options)
 	}
 
 	/* Init device instance, etc. */
-	if (!(sdi = sr_dev_inst_new(0, SR_ST_INACTIVE, "Manson",
+	if (!(sdi = sr_dev_inst_new(SR_ST_INACTIVE, "Manson",
 				    models[model_id].name, NULL))) {
 		sr_err("Failed to create device instance.");
 		return NULL;
@@ -216,7 +216,7 @@ static int cleanup(void)
 	return dev_clear();
 }
 
-static int config_get(int key, GVariant **data, const struct sr_dev_inst *sdi,
+static int config_get(uint32_t key, GVariant **data, const struct sr_dev_inst *sdi,
 		const struct sr_channel_group *cg)
 {
 	struct dev_context *devc;
@@ -235,20 +235,20 @@ static int config_get(int key, GVariant **data, const struct sr_dev_inst *sdi,
 	case SR_CONF_LIMIT_MSEC:
 		*data = g_variant_new_uint64(devc->limit_msec);
 		break;
+	case SR_CONF_OUTPUT_VOLTAGE:
+		*data = g_variant_new_double(devc->voltage);
+		break;
+	case SR_CONF_OUTPUT_VOLTAGE_TARGET:
+		*data = g_variant_new_double(devc->voltage_max);
+		break;
 	case SR_CONF_OUTPUT_CURRENT:
 		*data = g_variant_new_double(devc->current);
 		break;
-	case SR_CONF_OUTPUT_CURRENT_MAX:
+	case SR_CONF_OUTPUT_CURRENT_LIMIT:
 		*data = g_variant_new_double(devc->current_max);
 		break;
 	case SR_CONF_OUTPUT_ENABLED:
 		*data = g_variant_new_boolean(devc->output_enabled);
-		break;
-	case SR_CONF_OUTPUT_VOLTAGE:
-		*data = g_variant_new_double(devc->voltage);
-		break;
-	case SR_CONF_OUTPUT_VOLTAGE_MAX:
-		*data = g_variant_new_double(devc->voltage_max);
 		break;
 	default:
 		return SR_ERR_NA;
@@ -257,7 +257,7 @@ static int config_get(int key, GVariant **data, const struct sr_dev_inst *sdi,
 	return SR_OK;
 }
 
-static int config_set(int key, GVariant *data, const struct sr_dev_inst *sdi,
+static int config_set(uint32_t key, GVariant *data, const struct sr_dev_inst *sdi,
 		const struct sr_channel_group *cg)
 {
 	struct dev_context *devc;
@@ -282,7 +282,18 @@ static int config_set(int key, GVariant *data, const struct sr_dev_inst *sdi,
 			return SR_ERR_ARG;
 		devc->limit_samples = g_variant_get_uint64(data);
 		break;
-	case SR_CONF_OUTPUT_CURRENT_MAX:
+	case SR_CONF_OUTPUT_VOLTAGE_TARGET:
+		dval = g_variant_get_double(data);
+		if (dval < devc->model->voltage[0] || dval > devc->voltage_max_device)
+			return SR_ERR_ARG;
+
+		if ((hcs_send_cmd(sdi->conn, "VOLT%03.0f\r",
+			(dval / devc->model->voltage[2])) < 0) ||
+		    (hcs_read_reply(sdi->conn, 1, devc->buf, sizeof(devc->buf)) < 0))
+			return SR_ERR;
+		devc->voltage_max = dval;
+		break;
+	case SR_CONF_OUTPUT_CURRENT_LIMIT:
 		dval = g_variant_get_double(data);
 		if (dval < devc->model->current[0] || dval > devc->current_max_device)
 			return SR_ERR_ARG;
@@ -302,17 +313,6 @@ static int config_set(int key, GVariant *data, const struct sr_dev_inst *sdi,
 			return SR_ERR;
 		devc->output_enabled = bval;
 		break;
-	case SR_CONF_OUTPUT_VOLTAGE_MAX:
-		dval = g_variant_get_double(data);
-		if (dval < devc->model->voltage[0] || dval > devc->voltage_max_device)
-			return SR_ERR_ARG;
-
-		if ((hcs_send_cmd(sdi->conn, "VOLT%03.0f\r",
-			(dval / devc->model->voltage[2])) < 0) ||
-		    (hcs_read_reply(sdi->conn, 1, devc->buf, sizeof(devc->buf)) < 0))
-			return SR_ERR;
-		devc->voltage_max = dval;
-		break;
 	default:
 		return SR_ERR_NA;
 	}
@@ -320,7 +320,7 @@ static int config_set(int key, GVariant *data, const struct sr_dev_inst *sdi,
 	return SR_OK;
 }
 
-static int config_list(int key, GVariant **data, const struct sr_dev_inst *sdi,
+static int config_list(uint32_t key, GVariant **data, const struct sr_dev_inst *sdi,
 		const struct sr_channel_group *cg)
 {
 	struct dev_context *devc;
@@ -337,27 +337,14 @@ static int config_list(int key, GVariant **data, const struct sr_dev_inst *sdi,
 
 	switch (key) {
 	case SR_CONF_SCAN_OPTIONS:
-		*data = g_variant_new_fixed_array(G_VARIANT_TYPE_INT32,
-			hwopts, ARRAY_SIZE(hwopts), sizeof(int32_t));
+		*data = g_variant_new_fixed_array(G_VARIANT_TYPE_UINT32,
+			scanopts, ARRAY_SIZE(scanopts), sizeof(uint32_t));
 		break;
 	case SR_CONF_DEVICE_OPTIONS:
-		*data = g_variant_new_fixed_array(G_VARIANT_TYPE_INT32,
-			devopts, ARRAY_SIZE(devopts), sizeof(int32_t));
+		*data = g_variant_new_fixed_array(G_VARIANT_TYPE_UINT32,
+				devopts, ARRAY_SIZE(devopts), sizeof(uint32_t));
 		break;
-	case SR_CONF_OUTPUT_CURRENT_MAX:
-		g_variant_builder_init(&gvb, G_VARIANT_TYPE_ARRAY);
-		/* Min, max, step. */
-		for (idx = 0; idx < 3; idx++) {
-			if (idx == 1)
-				dval = devc->current_max_device;
-			else
-				dval = devc->model->current[idx];
-			gvar = g_variant_new_double(dval);
-			g_variant_builder_add_value(&gvb, gvar);
-		}
-		*data = g_variant_builder_end(&gvb);
-		break;
-	case SR_CONF_OUTPUT_VOLTAGE_MAX:
+	case SR_CONF_OUTPUT_VOLTAGE_TARGET:
 		g_variant_builder_init(&gvb, G_VARIANT_TYPE_ARRAY);
 		/* Min, max, step. */
 		for (idx = 0; idx < 3; idx++) {
@@ -365,6 +352,19 @@ static int config_list(int key, GVariant **data, const struct sr_dev_inst *sdi,
 				dval = devc->voltage_max_device;
 			else
 				dval = devc->model->voltage[idx];
+			gvar = g_variant_new_double(dval);
+			g_variant_builder_add_value(&gvb, gvar);
+		}
+		*data = g_variant_builder_end(&gvb);
+		break;
+	case SR_CONF_OUTPUT_CURRENT_LIMIT:
+		g_variant_builder_init(&gvb, G_VARIANT_TYPE_ARRAY);
+		/* Min, max, step. */
+		for (idx = 0; idx < 3; idx++) {
+			if (idx == 1)
+				dval = devc->current_max_device;
+			else
+				dval = devc->model->current[idx];
 			gvar = g_variant_new_double(dval);
 			g_variant_builder_add_value(&gvb, gvar);
 		}

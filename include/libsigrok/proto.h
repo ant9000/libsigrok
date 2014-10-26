@@ -55,6 +55,13 @@ SR_API int sr_dev_clear(const struct sr_dev_driver *driver);
 SR_API int sr_dev_open(struct sr_dev_inst *sdi);
 SR_API int sr_dev_close(struct sr_dev_inst *sdi);
 
+SR_API struct sr_dev_driver *sr_dev_inst_driver_get(struct sr_dev_inst *sdi);
+SR_API const char *sr_dev_inst_vendor_get(struct sr_dev_inst *sdi);
+SR_API const char *sr_dev_inst_model_get(struct sr_dev_inst *sdi);
+SR_API const char *sr_dev_inst_version_get(struct sr_dev_inst *sdi);
+SR_API const char *sr_dev_inst_sernum_get(struct sr_dev_inst *sdi);
+SR_API const char *sr_dev_inst_connid_get(struct sr_dev_inst *sdi);
+
 /*--- hwdriver.c ------------------------------------------------------------*/
 
 SR_API struct sr_dev_driver **sr_driver_list(void);
@@ -64,16 +71,16 @@ SR_API GSList *sr_driver_scan(struct sr_dev_driver *driver, GSList *options);
 SR_API int sr_config_get(const struct sr_dev_driver *driver,
 		const struct sr_dev_inst *sdi,
 		const struct sr_channel_group *cg,
-		int key, GVariant **data);
+		uint32_t key, GVariant **data);
 SR_API int sr_config_set(const struct sr_dev_inst *sdi,
 		const struct sr_channel_group *cg,
-		int key, GVariant *data);
+		uint32_t key, GVariant *data);
 SR_API int sr_config_commit(const struct sr_dev_inst *sdi);
 SR_API int sr_config_list(const struct sr_dev_driver *driver,
 		const struct sr_dev_inst *sdi,
 		const struct sr_channel_group *cg,
-		int key, GVariant **data);
-SR_API const struct sr_config_info *sr_config_info_get(int key);
+		uint32_t key, GVariant **data);
+SR_API const struct sr_config_info *sr_config_info_get(uint32_t key);
 SR_API const struct sr_config_info *sr_config_info_name_get(const char *optname);
 
 /*--- session.c -------------------------------------------------------------*/
@@ -137,7 +144,8 @@ SR_API int sr_input_scan_buffer(GString *buf, const struct sr_input **in);
 SR_API int sr_input_scan_file(const char *filename, const struct sr_input **in);
 SR_API struct sr_dev_inst *sr_input_dev_inst_get(const struct sr_input *in);
 SR_API int sr_input_send(const struct sr_input *in, GString *buf);
-SR_API int sr_input_free(const struct sr_input *in);
+SR_API int sr_input_end(const struct sr_input *in);
+SR_API void sr_input_free(const struct sr_input *in);
 
 /*--- output/output.c -------------------------------------------------------*/
 

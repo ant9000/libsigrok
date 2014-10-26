@@ -38,37 +38,37 @@ static int check_to_perform;
 static uint64_t expected_samples;
 static uint64_t *expected_samplerate;
 
-static void check_all_low(const struct sr_datafeed_logic *logic, uint64_t n)
+static void check_all_low(const struct sr_datafeed_logic *logic)
 {
 	uint64_t i;
 	uint8_t *data;
 
-	for (i = 0; i < n; i++) {
+	for (i = 0; i < logic->length; i++) {
 		data = logic->data;
 		if (data[i * logic->unitsize] != 0)
 			fail("Logic data was not all-0x00.");
 	}
 }
 
-static void check_all_high(const struct sr_datafeed_logic *logic, uint64_t n)
+static void check_all_high(const struct sr_datafeed_logic *logic)
 {
 	uint64_t i;
 	uint8_t *data;
 
-	for (i = 0; i < n; i++) {
+	for (i = 0; i < logic->length; i++) {
 		data = logic->data;
 		if (data[i * logic->unitsize] != 0xff)
 			fail("Logic data was not all-0xff.");
 	}
 }
 
-static void check_hello_world(const struct sr_datafeed_logic *logic, uint64_t n)
+static void check_hello_world(const struct sr_datafeed_logic *logic)
 {
 	uint64_t i;
 	uint8_t *data, b;
 	const char *h = "Hello world";
 
-	for (i = 0; i < n; i++) {
+	for (i = 0; i < logic->length; i++) {
 		data = logic->data;
 		b = data[sample_counter + i];
 		if (b != h[sample_counter + i])
@@ -153,11 +153,11 @@ static void datafeed_in(const struct sr_dev_inst *sdi,
 		// 	"unitsize %d).", logic->length, logic->unitsize);
 
 		if (check_to_perform == CHECK_ALL_LOW)
-			check_all_low(logic, expected_samples);
+			check_all_low(logic);
 		else if (check_to_perform == CHECK_ALL_HIGH)
-			check_all_high(logic, expected_samples);
+			check_all_high(logic);
 		else if (check_to_perform == CHECK_HELLO_WORLD)
-			check_hello_world(logic, expected_samples);
+			check_hello_world(logic);
 
 		sample_counter += logic->length / logic->unitsize;
 
@@ -207,7 +207,6 @@ static void check_buf(GHashTable *options, const uint8_t *buf, int check,
 	fail_unless(in != NULL, "Failed to create input instance.");
 
 	sdi = sr_input_dev_inst_get(in);
-	fail_unless(sdi != NULL, "Failed to get device instance.");
 
 	sr_session_new(&session);
 	sr_session_datafeed_callback_add(session, datafeed_in, NULL);
@@ -215,9 +214,7 @@ static void check_buf(GHashTable *options, const uint8_t *buf, int check,
 
 	ret = sr_input_send(in, gbuf);
 	fail_unless(ret == SR_OK, "sr_input_send() error: %d", ret);
-
-	ret = sr_input_free(in);
-	fail_unless(ret == SR_OK, "Failed to free input instance: %d", ret);
+	sr_input_free(in);
 
 	sr_session_destroy(session);
 
@@ -246,7 +243,6 @@ START_TEST(test_input_binary_all_low)
 	for (i = 1; i < BUFSIZE; i *= 3) {
 		check_buf(NULL, buf, CHECK_ALL_LOW, i, NULL);
 		check_buf(options, buf, CHECK_ALL_LOW, i, &samplerate);
-
 	}
 
 	g_hash_table_destroy(options);

@@ -25,20 +25,20 @@
 #include <stdlib.h>
 #include <string.h>
 
-static const int32_t hwopts[] = {
+static const uint32_t scanopts[] = {
 	SR_CONF_CONN,
 };
 
-static const int32_t hwcaps[] = {
+static const uint32_t devopts[] = {
 	SR_CONF_LOGIC_ANALYZER,
-	SR_CONF_SAMPLERATE,
-	SR_CONF_EXTERNAL_CLOCK,
-	SR_CONF_CLOCK_EDGE,
-	SR_CONF_TRIGGER_MATCH,
-	SR_CONF_TRIGGER_SOURCE,
-	SR_CONF_TRIGGER_SLOPE,
-	SR_CONF_LIMIT_MSEC,
-	SR_CONF_LIMIT_SAMPLES,
+	SR_CONF_LIMIT_SAMPLES | SR_CONF_GET | SR_CONF_SET,
+	SR_CONF_LIMIT_MSEC | SR_CONF_GET | SR_CONF_SET,
+	SR_CONF_SAMPLERATE | SR_CONF_GET | SR_CONF_SET | SR_CONF_LIST,
+	SR_CONF_EXTERNAL_CLOCK | SR_CONF_GET | SR_CONF_SET,
+	SR_CONF_CLOCK_EDGE | SR_CONF_GET | SR_CONF_SET | SR_CONF_LIST,
+	SR_CONF_TRIGGER_MATCH | SR_CONF_LIST,
+	SR_CONF_TRIGGER_SOURCE | SR_CONF_GET | SR_CONF_SET | SR_CONF_LIST,
+	SR_CONF_TRIGGER_SLOPE | SR_CONF_GET | SR_CONF_SET | SR_CONF_LIST,
 };
 
 static const int32_t trigger_matches[] = {
@@ -99,7 +99,7 @@ static GSList *gen_channel_list(int num_channels)
 	return list;
 }
 
-static struct sr_dev_inst *dev_inst_new(int device_index)
+static struct sr_dev_inst *dev_inst_new()
 {
 	struct sr_dev_inst *sdi;
 	struct dev_context *devc;
@@ -112,7 +112,7 @@ static struct sr_dev_inst *dev_inst_new(int device_index)
 	}
 
 	/* Register the device with libsigrok. */
-	sdi = sr_dev_inst_new(device_index, SR_ST_INACTIVE,
+	sdi = sr_dev_inst_new(SR_ST_INACTIVE,
 			      VENDOR_NAME, MODEL_NAME, NULL);
 	if (!sdi) {
 		sr_err("Failed to instantiate device.");
@@ -138,7 +138,6 @@ static GSList *scan(GSList *options)
 	struct sr_usb_dev_inst *usb;
 	struct sr_config *src;
 	const char *conn;
-	int device_index;
 
 	drvc = di->priv;
 	conn = USB_VID_PID;
@@ -152,13 +151,12 @@ static GSList *scan(GSList *options)
 	}
 	usb_devices = sr_usb_find(drvc->sr_ctx->libusb_ctx, conn);
 	devices = NULL;
-	device_index = g_slist_length(drvc->instances);
 
 	for (node = usb_devices; node != NULL; node = node->next) {
 		usb = node->data;
 
 		/* Create sigrok device instance. */
-		sdi = dev_inst_new(device_index);
+		sdi = dev_inst_new();
 		if (!sdi) {
 			sr_usb_dev_inst_free(usb);
 			continue;
@@ -271,7 +269,7 @@ static int cleanup(void)
 	return dev_clear();
 }
 
-static int config_get(int key, GVariant **data, const struct sr_dev_inst *sdi,
+static int config_get(uint32_t key, GVariant **data, const struct sr_dev_inst *sdi,
 		      const struct sr_channel_group *cg)
 {
 	struct dev_context *devc;
@@ -343,7 +341,7 @@ static int lookup_index(GVariant *value, const char *const *table, int len)
 	return -1;
 }
 
-static int config_set(int key, GVariant *data, const struct sr_dev_inst *sdi,
+static int config_set(uint32_t key, GVariant *data, const struct sr_dev_inst *sdi,
 		      const struct sr_channel_group *cg)
 {
 	uint64_t value;
@@ -445,7 +443,7 @@ static int config_commit(const struct sr_dev_inst *sdi)
 	return lwla_set_clock_config(sdi);
 }
 
-static int config_list(int key, GVariant **data, const struct sr_dev_inst *sdi,
+static int config_list(uint32_t key, GVariant **data, const struct sr_dev_inst *sdi,
 		       const struct sr_channel_group *cg)
 {
 	GVariant *gvar;
@@ -456,12 +454,12 @@ static int config_list(int key, GVariant **data, const struct sr_dev_inst *sdi,
 
 	switch (key) {
 	case SR_CONF_SCAN_OPTIONS:
-		*data = g_variant_new_fixed_array(G_VARIANT_TYPE_INT32,
-				hwopts, G_N_ELEMENTS(hwopts), sizeof(int32_t));
+		*data = g_variant_new_fixed_array(G_VARIANT_TYPE_UINT32,
+				scanopts, ARRAY_SIZE(scanopts), sizeof(uint32_t));
 		break;
 	case SR_CONF_DEVICE_OPTIONS:
-		*data = g_variant_new_fixed_array(G_VARIANT_TYPE_INT32,
-				hwcaps, G_N_ELEMENTS(hwcaps), sizeof(int32_t));
+		*data = g_variant_new_fixed_array(G_VARIANT_TYPE_UINT32,
+				devopts, G_N_ELEMENTS(devopts), sizeof(uint32_t));
 		break;
 	case SR_CONF_SAMPLERATE:
 		g_variant_builder_init(&gvb, G_VARIANT_TYPE("a{sv}"));

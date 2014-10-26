@@ -104,7 +104,14 @@ libsigrok_la_SOURCES += \
 	src/dmm/m2110.c \
 	src/dmm/metex14.c \
 	src/dmm/rs9lcd.c \
-	src/dmm/bm25x.c
+	src/dmm/bm25x.c \
+	src/dmm/ut71x.c
+
+# Hardware (LCR chip parsers)
+if HW_DEREE_DE5000
+libsigrok_la_SOURCES += \
+	src/lcr/es51919.c
+endif
 
 # Hardware drivers
 if HW_AGILENT_DMM
@@ -183,6 +190,10 @@ endif
 if HW_DEMO
 libsigrok_la_SOURCES += \
 	src/hardware/demo/demo.c
+endif
+if HW_DEREE_DE5000
+libsigrok_la_SOURCES += \
+	src/hardware/deree-de5000/api.c
 endif
 if HW_FLUKE_DMM
 libsigrok_la_SOURCES += \
@@ -285,6 +296,13 @@ libsigrok_la_SOURCES += \
 	src/hardware/saleae-logic16/protocol.h \
 	src/hardware/saleae-logic16/protocol.c \
 	src/hardware/saleae-logic16/api.c
+endif
+if HW_SCPI_PPS
+libsigrok_la_SOURCES += \
+	src/hardware/scpi-pps/protocol.h \
+	src/hardware/scpi-pps/protocol.c \
+	src/hardware/scpi-pps/profiles.c \
+	src/hardware/scpi-pps/api.c
 endif
 if HW_SERIAL_DMM
 libsigrok_la_SOURCES += \
@@ -442,7 +460,7 @@ bindings/cxx/include/libsigrok/enums.hpp: bindings/cxx/enums.timestamp
 
 bindings/cxx/enums.timestamp: bindings/cxx/enums.py doxy/xml/index.xml \
 		bindings/cxx/ConfigKey_methods.cpp bindings/cxx/QuantityFlag_methods.cpp
-	$(AM_V_GEN)python $< doxy/xml/index.xml
+	$(AM_V_GEN)$(PYTHON) $< doxy/xml/index.xml
 	$(AM_V_at)touch $@
 
 bindings/cxx/classes.lo: bindings/cxx/classes.cpp bindings/cxx/enums.cpp \
@@ -472,23 +490,23 @@ PDOC = bindings/python/sigrok/core/doc.i
 
 $(PDOC): bindings/swig/doc.py $(CPPXMLDOC)
 	$(AM_V_at)test -d $(PDIR)/sigrok/core || mkdir -p $(PDIR)/sigrok/core
-	$(AM_V_GEN)python $< python $(CPPXMLDOC) > $@
+	$(AM_V_GEN)$(PYTHON) $< python $(CPPXMLDOC) > $@
 
 python-build: $(PDIR)/timestamp
 
 python-quietclean:
-	$(AM_V_at)cd $(PDIR) && python $(abs_srcdir)/$(PDIR)/setup.py --quiet clean --all 3>&1 1>&2 2>&3 \
+	$(AM_V_at)cd $(PDIR) && $(PYTHON) $(abs_srcdir)/$(PDIR)/setup.py --quiet clean --all 3>&1 1>&2 2>&3 \
 		| grep -v "can.t clean it"; true
 
 $(PDIR)/timestamp: bindings/cxx/libsigrokxx.la $(PDIR)/sigrok/core/classes.i \
 		bindings/swig/classes.i $(PDOC) $(library_include_HEADERS)
 	$(AM_V_at)$(MAKE) python-quietclean
-	$(AM_V_GEN)cd $(PDIR) && python $(abs_srcdir)/$(PDIR)/setup.py --quiet build 3>&1 1>&2 2>&3 \
+	$(AM_V_GEN)cd $(PDIR) && $(PYTHON) $(abs_srcdir)/$(PDIR)/setup.py --quiet build 3>&1 1>&2 2>&3 \
 		| grep -v "command line option.*Wstrict-prototypes"; true
 	$(AM_V_at)touch $(PDIR)/timestamp
 
 python-install:
-	cd $(PDIR) && python $(abs_srcdir)/$(PDIR)/setup.py --quiet install --prefix $(prefix)
+	cd $(PDIR) && $(PYTHON) $(abs_srcdir)/$(PDIR)/setup.py --quiet install --prefix $(prefix)
 
 python-clean:
 	$(AM_V_at)$(MAKE) python-quietclean

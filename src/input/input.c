@@ -271,15 +271,17 @@ SR_API struct sr_input *sr_input_new(const struct sr_input_module *imod,
 	if (in->module->init && in->module->init(in, new_opts) != SR_OK) {
 		g_free(in);
 		in = NULL;
+	} else {
+		in->buf = g_string_sized_new(128);
 	}
+
 	if (new_opts)
 		g_hash_table_destroy(new_opts);
-	in->buf = g_string_sized_new(128);
 
 	return in;
 }
 
-/* Returns TRUE is all required meta items are available. */
+/* Returns TRUE if all required meta items are available. */
 static gboolean check_required_metadata(const uint8_t *metadata, uint8_t *avail)
 {
 	int m, a;
@@ -364,7 +366,7 @@ SR_API int sr_input_scan_buffer(GString *buf, const struct sr_input **in)
 			/* Module didn't recognize this buffer. */
 			continue;
 		} else if (ret != SR_OK) {
-			/* Can be SR_OK_CONTINUE. */
+			/* Can be SR_ERR_NA. */
 			return ret;
 		}
 
@@ -477,7 +479,7 @@ SR_API int sr_input_scan_file(const char *filename, const struct sr_input **in)
 			/* Module didn't recognize this buffer. */
 			continue;
 		} else if (ret != SR_OK) {
-			/* Can be SR_OK_CONTINUE. */
+			/* Can be SR_ERR_NA. */
 			return ret;
 		}
 
@@ -495,11 +497,18 @@ SR_API int sr_input_scan_file(const char *filename, const struct sr_input **in)
  * Return the input instance's (virtual) device instance. This can be
  * used to find out the number of channels and other information.
  *
+ * If the device instance has not yet been fully populated by the input
+ * module, NULL is returned. This indicates the module needs more data
+ * to identify the number of channels and so on.
+ *
  * @since 0.4.0
  */
 SR_API struct sr_dev_inst *sr_input_dev_inst_get(const struct sr_input *in)
 {
-	return in->sdi;
+	if (in->sdi_ready)
+		return in->sdi;
+	else
+		return NULL;
 }
 
 /**
@@ -508,11 +517,32 @@ SR_API struct sr_dev_inst *sr_input_dev_inst_get(const struct sr_input *in)
  * When an input module instance is created with sr_input_new(), this
  * function is used to feed data to the instance.
  *
+ * As enough data gets fed into this function to completely populate
+ * the device instance associated with this input instance, this is
+ * guaranteed to return the moment it's ready. This gives the caller
+ * the chance to examine the device instance, attach session callbacks
+ * and so on.
+ *
  * @since 0.4.0
  */
 SR_API int sr_input_send(const struct sr_input *in, GString *buf)
 {
-	return in->module->receive(in, buf);
+	sr_spew("Sending %d bytes to %s module.", buf->len, in->module->id);
+	return in->module->receive((struct sr_input *)in, buf);
+}
+
+/**
+ * Signal the input module no more data will come.
+ *
+ * This will cause the module to process any data it may have buffered.
+ * The SR_DF_END packet will also typically be sent at this time.
+ *
+ * @since 0.4.0
+ */
+SR_API int sr_input_end(const struct sr_input *in)
+{
+	sr_spew("Calling end() on %s module.", in->module->id);
+	return in->module->end((struct sr_input *)in);
 }
 
 /**
@@ -520,23 +550,22 @@ SR_API int sr_input_send(const struct sr_input *in, GString *buf)
  *
  * @since 0.4.0
  */
-SR_API int sr_input_free(const struct sr_input *in)
+SR_API void sr_input_free(const struct sr_input *in)
 {
-	int ret;
-
 	if (!in)
-		return SR_ERR_ARG;
+		return;
 
-	ret = SR_OK;
 	if (in->module->cleanup)
-		ret = in->module->cleanup((struct sr_input *)in);
+		in->module->cleanup((struct sr_input *)in);
 	if (in->sdi)
 		sr_dev_inst_free(in->sdi);
-	if (in->buf)
-		g_string_free(in->buf, TRUE);
+	if (in->buf->len > 64) {
+		/* That seems more than just some sub-unitsize leftover... */
+		sr_warn("Found %d unprocessed bytes at free time.", in->buf->len);
+	}
+	g_string_free(in->buf, TRUE);
+	g_free(in->priv);
 	g_free((gpointer)in);
-
-	return ret;
 }
 
 

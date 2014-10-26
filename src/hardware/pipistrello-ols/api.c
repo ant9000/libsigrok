@@ -19,16 +19,16 @@
 
 #include "protocol.h"
 
-static const int32_t hwcaps[] = {
+static const uint32_t devopts[] = {
 	SR_CONF_LOGIC_ANALYZER,
-	SR_CONF_SAMPLERATE,
-	SR_CONF_TRIGGER_MATCH,
-	SR_CONF_CAPTURE_RATIO,
-	SR_CONF_LIMIT_SAMPLES,
-	SR_CONF_PATTERN_MODE,
-	SR_CONF_EXTERNAL_CLOCK,
-	SR_CONF_SWAP,
-	SR_CONF_RLE,
+	SR_CONF_LIMIT_SAMPLES | SR_CONF_GET | SR_CONF_SET | SR_CONF_LIST,
+	SR_CONF_SAMPLERATE | SR_CONF_GET | SR_CONF_SET | SR_CONF_LIST,
+	SR_CONF_TRIGGER_MATCH | SR_CONF_LIST,
+	SR_CONF_CAPTURE_RATIO | SR_CONF_GET | SR_CONF_SET,
+	SR_CONF_PATTERN_MODE | SR_CONF_GET | SR_CONF_SET | SR_CONF_LIST,
+	SR_CONF_EXTERNAL_CLOCK | SR_CONF_GET | SR_CONF_SET,
+	SR_CONF_SWAP | SR_CONF_SET,
+	SR_CONF_RLE | SR_CONF_GET | SR_CONF_SET,
 };
 
 static const int32_t trigger_matches[] = {
@@ -185,7 +185,6 @@ static GSList *scan(GSList *options)
 
 	/* Parse the metadata. */
 	sdi = p_ols_get_metadata((uint8_t *)buf, bytes_read, devc);
-	sdi->index = 0;
 
 	/* Configure samplerate and divider. */
 	if (p_ols_set_samplerate(sdi, DEFAULT_SAMPLERATE) != SR_OK)
@@ -236,7 +235,7 @@ static int cleanup(void)
 }
 
 
-static int config_get(int id, GVariant **data, const struct sr_dev_inst *sdi,
+static int config_get(uint32_t key, GVariant **data, const struct sr_dev_inst *sdi,
 		const struct sr_channel_group *cg)
 {
 	struct dev_context *devc;
@@ -247,7 +246,7 @@ static int config_get(int id, GVariant **data, const struct sr_dev_inst *sdi,
 		return SR_ERR_ARG;
 
 	devc = sdi->priv;
-	switch (id) {
+	switch (key) {
 	case SR_CONF_SAMPLERATE:
 		*data = g_variant_new_uint64(devc->cur_samplerate);
 		break;
@@ -278,7 +277,7 @@ static int config_get(int id, GVariant **data, const struct sr_dev_inst *sdi,
 	return SR_OK;
 }
 
-static int config_set(int id, GVariant *data, const struct sr_dev_inst *sdi,
+static int config_set(uint32_t key, GVariant *data, const struct sr_dev_inst *sdi,
 		const struct sr_channel_group *cg)
 {
 	struct dev_context *devc;
@@ -294,7 +293,7 @@ static int config_set(int id, GVariant *data, const struct sr_dev_inst *sdi,
 
 	devc = sdi->priv;
 
-	switch (id) {
+	switch (key) {
 	case SR_CONF_SAMPLERATE:
 		tmp_u64 = g_variant_get_uint64(data);
 		if (tmp_u64 < samplerates[0] || tmp_u64 > samplerates[1])
@@ -375,7 +374,7 @@ static int config_set(int id, GVariant *data, const struct sr_dev_inst *sdi,
 	return ret;
 }
 
-static int config_list(int key, GVariant **data, const struct sr_dev_inst *sdi,
+static int config_list(uint32_t key, GVariant **data, const struct sr_dev_inst *sdi,
 		const struct sr_channel_group *cg)
 {
 	struct dev_context *devc;
@@ -387,8 +386,8 @@ static int config_list(int key, GVariant **data, const struct sr_dev_inst *sdi,
 
 	switch (key) {
 	case SR_CONF_DEVICE_OPTIONS:
-		*data = g_variant_new_fixed_array(G_VARIANT_TYPE_INT32,
-				hwcaps, ARRAY_SIZE(hwcaps), sizeof(int32_t));
+		*data = g_variant_new_fixed_array(G_VARIANT_TYPE_UINT32,
+				devopts, ARRAY_SIZE(devopts), sizeof(uint32_t));
 		break;
 	case SR_CONF_SAMPLERATE:
 		g_variant_builder_init(&gvb, G_VARIANT_TYPE("a{sv}"));

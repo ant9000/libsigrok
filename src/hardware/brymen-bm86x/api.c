@@ -21,15 +21,15 @@
 
 #define BRYMEN_BC86X "0820.0001"
 
-static const int32_t hwopts[] = {
+static const uint32_t scanopts[] = {
 	SR_CONF_CONN,
 };
 
-static const int32_t hwcaps[] = {
+static const uint32_t devopts[] = {
 	SR_CONF_MULTIMETER,
-	SR_CONF_LIMIT_SAMPLES,
-	SR_CONF_LIMIT_MSEC,
 	SR_CONF_CONTINUOUS,
+	SR_CONF_LIMIT_SAMPLES | SR_CONF_GET | SR_CONF_SET,
+	SR_CONF_LIMIT_MSEC | SR_CONF_GET | SR_CONF_SET,
 };
 
 SR_PRIV struct sr_dev_driver brymen_bm86x_driver_info;
@@ -73,7 +73,7 @@ static GSList *scan(GSList *options)
 	for (l = usb_devices; l; l = l->next) {
 		usb = l->data;
 
-		if (!(sdi = sr_dev_inst_new(0, SR_ST_INACTIVE,
+		if (!(sdi = sr_dev_inst_new(SR_ST_INACTIVE,
 		                            "Brymen", "BM869", NULL))) {
 			sr_err("sr_dev_inst_new returned NULL.");
 			return NULL;
@@ -182,7 +182,7 @@ static int cleanup(void)
 	return std_dev_clear(di, NULL);
 }
 
-static int config_get(int key, GVariant **data, const struct sr_dev_inst *sdi,
+static int config_get(uint32_t key, GVariant **data, const struct sr_dev_inst *sdi,
 		const struct sr_channel_group *cg)
 {
 	struct dev_context *devc = sdi->priv;
@@ -203,7 +203,7 @@ static int config_get(int key, GVariant **data, const struct sr_dev_inst *sdi,
 	return SR_OK;
 }
 
-static int config_set(int key, GVariant *data, const struct sr_dev_inst *sdi,
+static int config_set(uint32_t key, GVariant *data, const struct sr_dev_inst *sdi,
 		const struct sr_channel_group *cg)
 {
 	struct dev_context *devc;
@@ -234,7 +234,7 @@ static int config_set(int key, GVariant *data, const struct sr_dev_inst *sdi,
 	return SR_OK;
 }
 
-static int config_list(int key, GVariant **data, const struct sr_dev_inst *sdi,
+static int config_list(uint32_t key, GVariant **data, const struct sr_dev_inst *sdi,
 		const struct sr_channel_group *cg)
 {
 	(void)sdi;
@@ -242,12 +242,12 @@ static int config_list(int key, GVariant **data, const struct sr_dev_inst *sdi,
 
 	switch (key) {
 	case SR_CONF_SCAN_OPTIONS:
-		*data = g_variant_new_fixed_array(G_VARIANT_TYPE_INT32,
-				hwopts, ARRAY_SIZE(hwopts), sizeof(int32_t));
+		*data = g_variant_new_fixed_array(G_VARIANT_TYPE_UINT32,
+				scanopts, ARRAY_SIZE(scanopts), sizeof(uint32_t));
 		break;
 	case SR_CONF_DEVICE_OPTIONS:
-		*data = g_variant_new_fixed_array(G_VARIANT_TYPE_INT32,
-				hwcaps, ARRAY_SIZE(hwcaps), sizeof(int32_t));
+		*data = g_variant_new_fixed_array(G_VARIANT_TYPE_UINT32,
+				devopts, ARRAY_SIZE(devopts), sizeof(uint32_t));
 		break;
 	default:
 		return SR_ERR_NA;

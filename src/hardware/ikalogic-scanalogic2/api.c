@@ -19,12 +19,12 @@
 
 #include "protocol.h"
 
-static const int hwcaps[] = {
+static const uint32_t devopts[] = {
 	SR_CONF_LOGIC_ANALYZER,
-	SR_CONF_SAMPLERATE,
-	SR_CONF_LIMIT_SAMPLES,
-	SR_CONF_TRIGGER_MATCH,
-	SR_CONF_CAPTURE_RATIO,
+	SR_CONF_LIMIT_SAMPLES | SR_CONF_SET | SR_CONF_LIST,
+	SR_CONF_SAMPLERATE | SR_CONF_GET | SR_CONF_SET | SR_CONF_LIST,
+	SR_CONF_TRIGGER_MATCH | SR_CONF_LIST,
+	SR_CONF_CAPTURE_RATIO | SR_CONF_GET | SR_CONF_SET,
 };
 
 static const int32_t trigger_matches[] = {
@@ -69,7 +69,7 @@ static GSList *scan(GSList *options)
 	struct dev_context *devc;
 	struct sr_usb_dev_inst *usb;
 	struct device_info dev_info;
-	int ret, device_index, i;
+	int ret, i;
 	char *fw_ver_str;
 
 	(void)options;
@@ -77,7 +77,6 @@ static GSList *scan(GSList *options)
 	devices = NULL;
 	drvc = di->priv;
 	drvc->instances = NULL;
-	device_index = 0;
 
 	usb_devices = sr_usb_find(drvc->sr_ctx->libusb_ctx, USB_VID_PID);
 
@@ -125,7 +124,7 @@ static GSList *scan(GSList *options)
 			continue;
 		}
 
-		sdi = sr_dev_inst_new(device_index, SR_ST_INACTIVE, VENDOR_NAME,
+		sdi = sr_dev_inst_new(SR_ST_INACTIVE, VENDOR_NAME,
 			MODEL_NAME, fw_ver_str);
 		g_free(fw_ver_str);
 		if (!sdi) {
@@ -141,6 +140,7 @@ static GSList *scan(GSList *options)
 		sdi->driver = di;
 		sdi->inst_type = SR_INST_USB;
 		sdi->conn = usb;
+		sdi->serial_num = g_strdup_printf("%d", dev_info.serial);
 
 		for (i = 0; channel_names[i]; i++) {
 			ch = sr_channel_new(i, SR_CHANNEL_LOGIC, TRUE,
@@ -182,8 +182,6 @@ static GSList *scan(GSList *options)
 
 		drvc->instances = g_slist_append(drvc->instances, sdi);
 		devices = g_slist_append(devices, sdi);
-
-		device_index++;
 	}
 
 	g_slist_free(usb_devices);
@@ -313,7 +311,7 @@ static int cleanup(void)
 	return dev_clear();
 }
 
-static int config_get(int key, GVariant **data, const struct sr_dev_inst *sdi,
+static int config_get(uint32_t key, GVariant **data, const struct sr_dev_inst *sdi,
 		const struct sr_channel_group *cg)
 {
 	struct dev_context *devc;
@@ -338,7 +336,7 @@ static int config_get(int key, GVariant **data, const struct sr_dev_inst *sdi,
 	return ret;
 }
 
-static int config_set(int key, GVariant *data, const struct sr_dev_inst *sdi,
+static int config_set(uint32_t key, GVariant *data, const struct sr_dev_inst *sdi,
 		const struct sr_channel_group *cg)
 {
 	uint64_t samplerate, limit_samples, capture_ratio;
@@ -371,7 +369,7 @@ static int config_set(int key, GVariant *data, const struct sr_dev_inst *sdi,
 	return ret;
 }
 
-static int config_list(int key, GVariant **data, const struct sr_dev_inst *sdi,
+static int config_list(uint32_t key, GVariant **data, const struct sr_dev_inst *sdi,
 		const struct sr_channel_group *cg)
 {
 	GVariant *gvar, *grange[2];
@@ -385,8 +383,8 @@ static int config_list(int key, GVariant **data, const struct sr_dev_inst *sdi,
 
 	switch (key) {
 	case SR_CONF_DEVICE_OPTIONS:
-		*data = g_variant_new_fixed_array(G_VARIANT_TYPE_INT32, hwcaps,
-			ARRAY_SIZE(hwcaps), sizeof(int32_t));
+		*data = g_variant_new_fixed_array(G_VARIANT_TYPE_UINT32,
+				devopts, ARRAY_SIZE(devopts), sizeof(uint32_t));
 		break;
 	case SR_CONF_SAMPLERATE:
 		g_variant_builder_init(&gvb, G_VARIANT_TYPE("a{sv}"));

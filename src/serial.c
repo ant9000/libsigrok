@@ -34,7 +34,7 @@
  *
  * @param serial Previously initialized serial port structure.
  * @param[in] flags Flags to use when opening the serial port. Possible flags
- *              include SERIAL_RDWR, SERIAL_RDONLY, SERIAL_NONBLOCK.
+ *              include SERIAL_RDWR, SERIAL_RDONLY.
  *
  * If the serial structure contains a serialcomm string, it will be
  * passed to serial_set_paramstr() after the port is opened.
@@ -61,8 +61,6 @@ SR_PRIV int serial_open(struct sr_serial_dev_inst *serial, int flags)
 		sp_flags = (SP_MODE_READ | SP_MODE_WRITE);
 	else if (flags & SERIAL_RDONLY)
 		sp_flags = SP_MODE_READ;
-
-	serial->nonblocking = (flags & SERIAL_NONBLOCK) ? 1 : 0;
 
 	ret = sp_open(serial->data, sp_flags);
 
@@ -172,7 +170,7 @@ SR_PRIV int serial_flush(struct sr_serial_dev_inst *serial)
 }
 
 static int _serial_write(struct sr_serial_dev_inst *serial,
-		const void *buf, size_t count, int nonblocking)
+		const void *buf, size_t count, int nonblocking, unsigned int timeout_ms)
 {
 	ssize_t ret;
 	char *error;
@@ -190,7 +188,7 @@ static int _serial_write(struct sr_serial_dev_inst *serial,
 	if (nonblocking)
 		ret = sp_nonblocking_write(serial->data, buf, count);
 	else
-		ret = sp_blocking_write(serial->data, buf, count, 0);
+		ret = sp_blocking_write(serial->data, buf, count, timeout_ms);
 
 	switch (ret) {
 	case SP_ERR_ARG:
@@ -209,7 +207,26 @@ static int _serial_write(struct sr_serial_dev_inst *serial,
 }
 
 /**
- * Write a number of bytes to the specified serial port.
+ * Write a number of bytes to the specified serial port, blocking until finished.
+ *
+ * @param serial Previously initialized serial port structure.
+ * @param[in] buf Buffer containing the bytes to write.
+ * @param[in] count Number of bytes to write.
+ * @param[in] timeout_ms Timeout in ms, or 0 for no timeout.
+ *
+ * @retval SR_ERR_ARG Invalid argument.
+ * @retval SR_ERR Other error.
+ * @retval other The number of bytes written. If this is less than the number
+ * specified in the call, the timeout was reached.
+ */
+SR_PRIV int serial_write_blocking(struct sr_serial_dev_inst *serial,
+		const void *buf, size_t count, unsigned int timeout_ms)
+{
+	return _serial_write(serial, buf, count, 0, timeout_ms);
+}
+
+/**
+ * Write a number of bytes to the specified serial port, return immediately.
  *
  * @param serial Previously initialized serial port structure.
  * @param[in] buf Buffer containing the bytes to write.
@@ -218,35 +235,15 @@ static int _serial_write(struct sr_serial_dev_inst *serial,
  * @retval SR_ERR_ARG Invalid argument.
  * @retval SR_ERR Other error.
  * @retval other The number of bytes written.
- */
-SR_PRIV int serial_write(struct sr_serial_dev_inst *serial,
-		const void *buf, size_t count)
-{
-	return _serial_write(serial, buf, count, serial->nonblocking);
-}
-
-/**
- * Write a number of bytes to the specified serial port, blocking until finished.
- * @copydetails serial_write()
- */
-SR_PRIV int serial_write_blocking(struct sr_serial_dev_inst *serial,
-		const void *buf, size_t count)
-{
-	return _serial_write(serial, buf, count, 0);
-}
-
-/**
- * Write a number of bytes to the specified serial port, return immediately.
- * @copydetails serial_write()
 */
 SR_PRIV int serial_write_nonblocking(struct sr_serial_dev_inst *serial,
 		const void *buf, size_t count)
 {
-	return _serial_write(serial, buf, count, 1);
+	return _serial_write(serial, buf, count, 1, 0);
 }
 
 static int _serial_read(struct sr_serial_dev_inst *serial, void *buf,
-		size_t count, int nonblocking)
+		size_t count, int nonblocking, unsigned int timeout_ms)
 {
 	ssize_t ret;
 	char *error;
@@ -264,7 +261,7 @@ static int _serial_read(struct sr_serial_dev_inst *serial, void *buf,
 	if (nonblocking)
 		ret = sp_nonblocking_read(serial->data, buf, count);
 	else
-		ret = sp_blocking_read(serial->data, buf, count, 0);
+		ret = sp_blocking_read(serial->data, buf, count, timeout_ms);
 
 	switch (ret) {
 	case SP_ERR_ARG:
@@ -284,7 +281,27 @@ static int _serial_read(struct sr_serial_dev_inst *serial, void *buf,
 }
 
 /**
- * Read a number of bytes from the specified serial port.
+ * Read a number of bytes from the specified serial port, block until finished.
+ *
+ * @param serial Previously initialized serial port structure.
+ * @param buf Buffer where to store the bytes that are read.
+ * @param[in] count The number of bytes to read.
+ * @param[in] timeout_ms Timeout in ms, or 0 for no timeout.
+ *
+ * @retval SR_ERR_ARG Invalid argument.
+ * @retval SR_ERR     Other error.
+ * @retval other      The number of bytes read. If this is less than the number
+ * requested, the timeout was reached.
+ */
+SR_PRIV int serial_read_blocking(struct sr_serial_dev_inst *serial, void *buf,
+		size_t count, unsigned int timeout_ms)
+{
+	return _serial_read(serial, buf, count, 0, timeout_ms);
+}
+
+/**
+ * Try to read up to @a count bytes from the specified serial port, return
+ * immediately with what's available.
  *
  * @param serial Previously initialized serial port structure.
  * @param buf Buffer where to store the bytes that are read.
@@ -294,31 +311,10 @@ static int _serial_read(struct sr_serial_dev_inst *serial, void *buf,
  * @retval SR_ERR     Other error.
  * @retval other      The number of bytes read.
  */
-SR_PRIV int serial_read(struct sr_serial_dev_inst *serial, void *buf,
-		size_t count)
-{
-	return _serial_read(serial, buf, count, serial->nonblocking);
-}
-
-/**
- * Read a number of bytes from the specified serial port, block until finished.
- * @copydetails serial_read()
- */
-SR_PRIV int serial_read_blocking(struct sr_serial_dev_inst *serial, void *buf,
-		size_t count)
-{
-	return _serial_read(serial, buf, count, 0);
-}
-
-/**
- * Try to read up to @a count bytes from the specified serial port, return
- * immediately with what's available.
- * @copydetails serial_read()
- */
 SR_PRIV int serial_read_nonblocking(struct sr_serial_dev_inst *serial, void *buf,
 		size_t count)
 {
-	return _serial_read(serial, buf, count, 1);
+	return _serial_read(serial, buf, count, 1, 0);
 }
 
 /**
@@ -530,7 +526,7 @@ SR_PRIV int serial_set_paramstr(struct sr_serial_dev_inst *serial,
 SR_PRIV int serial_readline(struct sr_serial_dev_inst *serial, char **buf,
 		int *buflen, gint64 timeout_ms)
 {
-	gint64 start;
+	gint64 start, remaining;
 	int maxlen, len;
 
 	if (!serial) {
@@ -543,8 +539,8 @@ SR_PRIV int serial_readline(struct sr_serial_dev_inst *serial, char **buf,
 		return -1;
 	}
 
-	timeout_ms *= 1000;
 	start = g_get_monotonic_time();
+	remaining = timeout_ms;
 
 	maxlen = *buflen;
 	*buflen = len = 0;
@@ -552,7 +548,7 @@ SR_PRIV int serial_readline(struct sr_serial_dev_inst *serial, char **buf,
 		len = maxlen - *buflen - 1;
 		if (len < 1)
 			break;
-		len = serial_read(serial, *buf + *buflen, 1);
+		len = sp_blocking_read(serial->data, *buf + *buflen, 1, remaining);
 		if (len > 0) {
 			*buflen += len;
 			*(*buf + *buflen) = '\0';
@@ -563,7 +559,9 @@ SR_PRIV int serial_readline(struct sr_serial_dev_inst *serial, char **buf,
 				break;
 			}
 		}
-		if (g_get_monotonic_time() - start > timeout_ms)
+		/* Reduce timeout by time elapsed. */
+		remaining = timeout_ms - ((g_get_monotonic_time() - start) / 1000);
+		if (remaining <= 0)
 			/* Timeout */
 			break;
 		if (len < 1)
@@ -618,7 +616,7 @@ SR_PRIV int serial_stream_detect(struct sr_serial_dev_inst *serial,
 
 	i = ibuf = len = 0;
 	while (ibuf < maxlen) {
-		len = serial_read(serial, &buf[ibuf], 1);
+		len = serial_read_nonblocking(serial, &buf[ibuf], 1);
 		if (len > 0) {
 			ibuf += len;
 		} else if (len == 0) {
@@ -799,4 +797,44 @@ SR_PRIV GSList *sr_serial_find_usb(uint16_t vendor_id, uint16_t product_id)
 
 	sp_free_port_list(ports);
 	return tty_devs;
+}
+
+SR_PRIV int serial_timeout(struct sr_serial_dev_inst *port, int num_bytes)
+{
+	struct sp_port_config *config;
+	int timeout_ms, bits, baud, tmp;
+
+	/* Default to 1s. */
+	timeout_ms = 1000;
+
+	if (sp_new_config(&config) < 0)
+		return timeout_ms;
+
+	bits = baud = 0;
+	do {
+		if (sp_get_config(port->data, config) < 0)
+			break;
+
+		/* Start bit. */
+		bits = 1;
+		if (sp_get_config_bits(config, &tmp) < 0)
+			break;
+		bits += tmp;
+		if (sp_get_config_stopbits(config, &tmp) < 0)
+			break;
+		bits += tmp;
+		if (sp_get_config_baudrate(config, &tmp) < 0)
+			break;
+		baud = tmp;
+	} while (FALSE);
+
+	if (bits && baud) {
+		/* Throw in 10ms for misc OS overhead. */
+		timeout_ms = 10;
+		timeout_ms += ((1000.0 / baud) * bits) * num_bytes;
+	}
+
+	sp_free_config(config);
+
+	return timeout_ms;
 }

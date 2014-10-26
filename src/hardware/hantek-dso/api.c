@@ -40,24 +40,25 @@
 #define NUM_TIMEBASE  10
 #define NUM_VDIV      8
 
-static const int32_t scanopts[] = {
+static const uint32_t scanopts[] = {
 	SR_CONF_CONN,
 };
 
-static const int32_t devopts[] = {
+static const uint32_t devopts[] = {
 	SR_CONF_OSCILLOSCOPE,
-	SR_CONF_LIMIT_FRAMES,
 	SR_CONF_CONTINUOUS,
-	SR_CONF_TIMEBASE,
-	SR_CONF_BUFFERSIZE,
-	SR_CONF_TRIGGER_SOURCE,
-	SR_CONF_TRIGGER_SLOPE,
-	SR_CONF_HORIZ_TRIGGERPOS,
-	SR_CONF_FILTER,
-	SR_CONF_VDIV,
-	SR_CONF_COUPLING,
-	SR_CONF_NUM_TIMEBASE,
-	SR_CONF_NUM_VDIV,
+	SR_CONF_CONN | SR_CONF_GET,
+	SR_CONF_LIMIT_FRAMES | SR_CONF_SET,
+	SR_CONF_TIMEBASE | SR_CONF_SET | SR_CONF_LIST,
+	SR_CONF_BUFFERSIZE | SR_CONF_SET | SR_CONF_LIST,
+	SR_CONF_TRIGGER_SOURCE | SR_CONF_SET | SR_CONF_LIST,
+	SR_CONF_TRIGGER_SLOPE | SR_CONF_SET,
+	SR_CONF_HORIZ_TRIGGERPOS | SR_CONF_SET,
+	SR_CONF_FILTER | SR_CONF_SET | SR_CONF_LIST,
+	SR_CONF_VDIV | SR_CONF_SET | SR_CONF_LIST,
+	SR_CONF_COUPLING | SR_CONF_SET | SR_CONF_LIST,
+	SR_CONF_NUM_TIMEBASE | SR_CONF_GET,
+	SR_CONF_NUM_VDIV | SR_CONF_GET,
 };
 
 static const char *channel_names[] = {
@@ -157,7 +158,7 @@ static struct sr_dev_driver *di = &hantek_dso_driver_info;
 
 static int dev_acquisition_stop(struct sr_dev_inst *sdi, void *cb_data);
 
-static struct sr_dev_inst *dso_dev_new(int index, const struct dso_profile *prof)
+static struct sr_dev_inst *dso_dev_new(const struct dso_profile *prof)
 {
 	struct sr_dev_inst *sdi;
 	struct sr_channel *ch;
@@ -165,7 +166,7 @@ static struct sr_dev_inst *dso_dev_new(int index, const struct dso_profile *prof
 	struct dev_context *devc;
 	int i;
 
-	sdi = sr_dev_inst_new(index, SR_ST_INITIALIZING,
+	sdi = sr_dev_inst_new(SR_ST_INITIALIZING,
 		prof->vendor, prof->model, NULL);
 	if (!sdi)
 		return NULL;
@@ -265,12 +266,12 @@ static GSList *scan(GSList *options)
 	GSList *l, *devices, *conn_devices;
 	struct libusb_device_descriptor des;
 	libusb_device **devlist;
-	int devcnt, ret, i, j;
+	int ret, i, j;
 	const char *conn;
+	char connection_id[64];
 
 	drvc = di->priv;
 
-	devcnt = 0;
 	devices = 0;
 
 	conn = NULL;
@@ -309,6 +310,8 @@ static GSList *scan(GSList *options)
 			continue;
 		}
 
+		usb_get_port_path(devlist[i], connection_id, sizeof(connection_id));
+
 		prof = NULL;
 		for (j = 0; dev_profiles[j].orig_vid; j++) {
 			if (des.idVendor == dev_profiles[j].orig_vid
@@ -316,7 +319,8 @@ static GSList *scan(GSList *options)
 				/* Device matches the pre-firmware profile. */
 				prof = &dev_profiles[j];
 				sr_dbg("Found a %s %s.", prof->vendor, prof->model);
-				sdi = dso_dev_new(devcnt, prof);
+				sdi = dso_dev_new(prof);
+				sdi->connection_id = g_strdup(connection_id);
 				devices = g_slist_append(devices, sdi);
 				devc = sdi->priv;
 				if (ezusb_upload_firmware(devlist[i], USB_CONFIGURATION,
@@ -324,27 +328,24 @@ static GSList *scan(GSList *options)
 					/* Remember when the firmware on this device was updated */
 					devc->fw_updated = g_get_monotonic_time();
 				else
-					sr_err("Firmware upload failed for "
-					        "device %d.", devcnt);
+					sr_err("Firmware upload failed");
 				/* Dummy USB address of 0xff will get overwritten later. */
 				sdi->conn = sr_usb_dev_inst_new(
 						libusb_get_bus_number(devlist[i]), 0xff, NULL);
-				devcnt++;
 				break;
 			} else if (des.idVendor == dev_profiles[j].fw_vid
 				&& des.idProduct == dev_profiles[j].fw_pid) {
 				/* Device matches the post-firmware profile. */
 				prof = &dev_profiles[j];
 				sr_dbg("Found a %s %s.", prof->vendor, prof->model);
-				sdi = dso_dev_new(devcnt, prof);
+				sdi = dso_dev_new(prof);
+				sdi->connection_id = g_strdup(connection_id);
 				sdi->status = SR_ST_INACTIVE;
 				devices = g_slist_append(devices, sdi);
-				devc = sdi->priv;
 				sdi->inst_type = SR_INST_USB;
 				sdi->conn = sr_usb_dev_inst_new(
 						libusb_get_bus_number(devlist[i]),
 						libusb_get_device_address(devlist[i]), NULL);
-				devcnt++;
 				break;
 			}
 		}
@@ -422,7 +423,7 @@ static int cleanup(void)
 	return dev_clear();
 }
 
-static int config_get(int id, GVariant **data, const struct sr_dev_inst *sdi,
+static int config_get(uint32_t key, GVariant **data, const struct sr_dev_inst *sdi,
 		const struct sr_channel_group *cg)
 {
 	struct sr_usb_dev_inst *usb;
@@ -430,7 +431,7 @@ static int config_get(int id, GVariant **data, const struct sr_dev_inst *sdi,
 
 	(void)cg;
 
-	switch (id) {
+	switch (key) {
 	case SR_CONF_CONN:
 		if (!sdi || !sdi->conn)
 			return SR_ERR_ARG;
@@ -455,7 +456,7 @@ static int config_get(int id, GVariant **data, const struct sr_dev_inst *sdi,
 	return SR_OK;
 }
 
-static int config_set(int id, GVariant *data, const struct sr_dev_inst *sdi,
+static int config_set(uint32_t key, GVariant *data, const struct sr_dev_inst *sdi,
 		const struct sr_channel_group *cg)
 {
 	struct dev_context *devc;
@@ -473,7 +474,7 @@ static int config_set(int id, GVariant *data, const struct sr_dev_inst *sdi,
 
 	ret = SR_OK;
 	devc = sdi->priv;
-	switch (id) {
+	switch (key) {
 	case SR_CONF_LIMIT_FRAMES:
 		devc->limit_frames = g_variant_get_uint64(data);
 		break;
@@ -586,7 +587,7 @@ static int config_set(int id, GVariant *data, const struct sr_dev_inst *sdi,
 	return ret;
 }
 
-static int config_list(int key, GVariant **data, const struct sr_dev_inst *sdi,
+static int config_list(uint32_t key, GVariant **data, const struct sr_dev_inst *sdi,
 		const struct sr_channel_group *cg)
 {
 	struct dev_context *devc;
@@ -598,12 +599,12 @@ static int config_list(int key, GVariant **data, const struct sr_dev_inst *sdi,
 
 	switch (key) {
 	case SR_CONF_SCAN_OPTIONS:
-		*data = g_variant_new_fixed_array(G_VARIANT_TYPE_INT32,
-				scanopts, ARRAY_SIZE(scanopts), sizeof(int32_t));
+		*data = g_variant_new_fixed_array(G_VARIANT_TYPE_UINT32,
+				scanopts, ARRAY_SIZE(scanopts), sizeof(uint32_t));
 		break;
 	case SR_CONF_DEVICE_OPTIONS:
-		*data = g_variant_new_fixed_array(G_VARIANT_TYPE_INT32,
-				devopts, ARRAY_SIZE(devopts), sizeof(int32_t));
+		*data = g_variant_new_fixed_array(G_VARIANT_TYPE_UINT32,
+				devopts, ARRAY_SIZE(devopts), sizeof(uint32_t));
 		break;
 	case SR_CONF_BUFFERSIZE:
 		if (!sdi)
@@ -668,6 +669,7 @@ static void send_chunk(struct sr_dev_inst *sdi, unsigned char *buf,
 	analog.num_samples = num_samples;
 	analog.mq = SR_MQ_VOLTAGE;
 	analog.unit = SR_UNIT_VOLT;
+	analog.mqflags = 0;
 	/* TODO: Check malloc return value. */
 	analog.data = g_try_malloc(analog.num_samples * sizeof(float) * num_channels);
 	data_offset = 0;

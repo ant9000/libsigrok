@@ -26,15 +26,15 @@ SR_PRIV struct sr_dev_driver testo_driver_info;
 static struct sr_dev_driver *di = &testo_driver_info;
 static int dev_acquisition_stop(struct sr_dev_inst *sdi, void *cb_data);
 
-static const int32_t scanopts[] = {
+static const uint32_t scanopts[] = {
 	SR_CONF_CONN,
 };
 
-static const int32_t devopts[] = {
+static const uint32_t devopts[] = {
 	SR_CONF_MULTIMETER,
-	SR_CONF_LIMIT_MSEC,
-	SR_CONF_LIMIT_SAMPLES,
 	SR_CONF_CONTINUOUS,
+	SR_CONF_LIMIT_SAMPLES | SR_CONF_SET,
+	SR_CONF_LIMIT_MSEC | SR_CONF_SET,
 };
 
 unsigned char TESTO_x35_REQUEST[] = { 0x12, 0, 0, 0, 1, 1, 0x55, 0xd1, 0xb7 };
@@ -58,9 +58,9 @@ static GSList *scan(GSList *options)
 	libusb_device **devlist;
 	struct libusb_device_handle *hdl;
 	GSList *conn_devices, *devices, *l;
-	int devcnt, ret, i;
+	int ret, i;
 	const char *str;
-	char manufacturer[64], product[64];
+	char manufacturer[64], product[64], connection_id[64];
 
 	devices = NULL;
 	drvc = di->priv;
@@ -118,17 +118,19 @@ static GSList *scan(GSList *options)
 		if (strncmp(manufacturer, "testo", 5))
 			continue;
 
+		usb_get_port_path(devlist[i], connection_id, sizeof(connection_id));
+
 		/* Hardcode the 435 for now.*/
 		if (strcmp(product, "testo 435/635/735"))
 			continue;
 
-		devcnt = g_slist_length(drvc->instances);
-		sdi = sr_dev_inst_new(devcnt, SR_ST_INACTIVE, "Testo",
+		sdi = sr_dev_inst_new(SR_ST_INACTIVE, "Testo",
 				"435/635/735", NULL);
 		sdi->driver = di;
 		sdi->inst_type = SR_INST_USB;
 		sdi->conn = sr_usb_dev_inst_new(libusb_get_bus_number(devlist[i]),
 				libusb_get_device_address(devlist[i]), NULL);
+		sdi->connection_id = g_strdup(connection_id);
 		devc = g_malloc(sizeof(struct dev_context));
 		devc->model = &models[0];
 		devc->limit_msec = 0;
@@ -161,6 +163,7 @@ static int dev_open(struct sr_dev_inst *sdi)
 	struct sr_usb_dev_inst *usb;
 	libusb_device **devlist;
 	int ret, i;
+	char connection_id[64];
 
 	if (!di->priv) {
 		sr_err("Driver was not initialized.");
@@ -170,8 +173,8 @@ static int dev_open(struct sr_dev_inst *sdi)
 	usb = sdi->conn;
 	libusb_get_device_list(drvc->sr_ctx->libusb_ctx, &devlist);
 	for (i = 0; devlist[i]; i++) {
-		if (libusb_get_bus_number(devlist[i]) != usb->bus
-				|| libusb_get_device_address(devlist[i]) != usb->address)
+		usb_get_port_path(devlist[i], connection_id, sizeof(connection_id));
+		if (strcmp(sdi->connection_id, connection_id))
 			continue;
 		if ((ret = libusb_open(devlist[i], &usb->devhdl))) {
 			sr_err("Failed to open device: %s.", libusb_error_name(ret));
@@ -241,7 +244,7 @@ static int cleanup(void)
 	return ret;
 }
 
-static int config_get(int key, GVariant **data, const struct sr_dev_inst *sdi,
+static int config_get(uint32_t key, GVariant **data, const struct sr_dev_inst *sdi,
 		const struct sr_channel_group *cg)
 {
 	struct sr_usb_dev_inst *usb;
@@ -264,7 +267,7 @@ static int config_get(int key, GVariant **data, const struct sr_dev_inst *sdi,
 	return SR_OK;
 }
 
-static int config_set(int key, GVariant *data, const struct sr_dev_inst *sdi,
+static int config_set(uint32_t key, GVariant *data, const struct sr_dev_inst *sdi,
 		const struct sr_channel_group *cg)
 {
 	struct dev_context *devc;
@@ -303,7 +306,7 @@ static int config_set(int key, GVariant *data, const struct sr_dev_inst *sdi,
 	return ret;
 }
 
-static int config_list(int key, GVariant **data, const struct sr_dev_inst *sdi,
+static int config_list(uint32_t key, GVariant **data, const struct sr_dev_inst *sdi,
 		const struct sr_channel_group *cg)
 {
 	(void)sdi;
@@ -311,12 +314,12 @@ static int config_list(int key, GVariant **data, const struct sr_dev_inst *sdi,
 
 	switch (key) {
 	case SR_CONF_SCAN_OPTIONS:
-		*data = g_variant_new_fixed_array(G_VARIANT_TYPE_INT32,
-				scanopts, ARRAY_SIZE(scanopts), sizeof(int32_t));
+		*data = g_variant_new_fixed_array(G_VARIANT_TYPE_UINT32,
+				scanopts, ARRAY_SIZE(scanopts), sizeof(uint32_t));
 		break;
 	case SR_CONF_DEVICE_OPTIONS:
-		*data = g_variant_new_fixed_array(G_VARIANT_TYPE_INT32,
-				devopts, ARRAY_SIZE(devopts), sizeof(int32_t));
+		*data = g_variant_new_fixed_array(G_VARIANT_TYPE_UINT32,
+				devopts, ARRAY_SIZE(devopts), sizeof(uint32_t));
 		break;
 	default:
 		return SR_ERR_NA;

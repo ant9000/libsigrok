@@ -61,6 +61,9 @@ extern SR_PRIV struct sr_dev_driver conrad_digi_35_cpu_driver_info;
 #ifdef HAVE_HW_DEMO
 extern SR_PRIV struct sr_dev_driver demo_driver_info;
 #endif
+#ifdef HAVE_HW_DEREE_DE5000
+extern SR_PRIV struct sr_dev_driver deree_de5000_driver_info;
+#endif
 #ifdef HAVE_HW_FLUKE_DMM
 extern SR_PRIV struct sr_dev_driver flukedmm_driver_info;
 #endif
@@ -121,6 +124,9 @@ extern SR_PRIV struct sr_dev_driver rigol_ds_driver_info;
 #ifdef HAVE_HW_SALEAE_LOGIC16
 extern SR_PRIV struct sr_dev_driver saleae_logic16_driver_info;
 #endif
+#ifdef HAVE_HW_SCPI_PPS
+extern SR_PRIV struct sr_dev_driver scpi_pps_driver_info;
+#endif
 #ifdef HAVE_HW_SERIAL_DMM
 extern SR_PRIV struct sr_dev_driver bbcgm_m2110_driver_info;
 extern SR_PRIV struct sr_dev_driver digitek_dt4000zc_driver_info;
@@ -145,6 +151,9 @@ extern SR_PRIV struct sr_dev_driver voltcraft_me42_driver_info;
 extern SR_PRIV struct sr_dev_driver voltcraft_vc820_ser_driver_info;
 extern SR_PRIV struct sr_dev_driver voltcraft_vc830_ser_driver_info;
 extern SR_PRIV struct sr_dev_driver voltcraft_vc840_ser_driver_info;
+extern SR_PRIV struct sr_dev_driver voltcraft_vc920_ser_driver_info;
+extern SR_PRIV struct sr_dev_driver voltcraft_vc940_ser_driver_info;
+extern SR_PRIV struct sr_dev_driver voltcraft_vc960_ser_driver_info;
 extern SR_PRIV struct sr_dev_driver uni_t_ut60a_ser_driver_info;
 extern SR_PRIV struct sr_dev_driver uni_t_ut60e_ser_driver_info;
 extern SR_PRIV struct sr_dev_driver uni_t_ut60g_ser_driver_info;
@@ -152,6 +161,11 @@ extern SR_PRIV struct sr_dev_driver uni_t_ut61b_ser_driver_info;
 extern SR_PRIV struct sr_dev_driver uni_t_ut61c_ser_driver_info;
 extern SR_PRIV struct sr_dev_driver uni_t_ut61d_ser_driver_info;
 extern SR_PRIV struct sr_dev_driver uni_t_ut61e_ser_driver_info;
+extern SR_PRIV struct sr_dev_driver uni_t_ut71a_ser_driver_info;
+extern SR_PRIV struct sr_dev_driver uni_t_ut71b_ser_driver_info;
+extern SR_PRIV struct sr_dev_driver uni_t_ut71c_ser_driver_info;
+extern SR_PRIV struct sr_dev_driver uni_t_ut71d_ser_driver_info;
+extern SR_PRIV struct sr_dev_driver uni_t_ut71e_ser_driver_info;
 extern SR_PRIV struct sr_dev_driver iso_tech_idm103n_driver_info;
 extern SR_PRIV struct sr_dev_driver tenma_72_7745_ser_driver_info;
 extern SR_PRIV struct sr_dev_driver tenma_72_7750_ser_driver_info;
@@ -178,9 +192,17 @@ extern SR_PRIV struct sr_dev_driver uni_t_ut61b_driver_info;
 extern SR_PRIV struct sr_dev_driver uni_t_ut61c_driver_info;
 extern SR_PRIV struct sr_dev_driver uni_t_ut61d_driver_info;
 extern SR_PRIV struct sr_dev_driver uni_t_ut61e_driver_info;
+extern SR_PRIV struct sr_dev_driver uni_t_ut71a_driver_info;
+extern SR_PRIV struct sr_dev_driver uni_t_ut71b_driver_info;
+extern SR_PRIV struct sr_dev_driver uni_t_ut71c_driver_info;
+extern SR_PRIV struct sr_dev_driver uni_t_ut71d_driver_info;
+extern SR_PRIV struct sr_dev_driver uni_t_ut71e_driver_info;
 extern SR_PRIV struct sr_dev_driver voltcraft_vc820_driver_info;
 extern SR_PRIV struct sr_dev_driver voltcraft_vc830_driver_info;
 extern SR_PRIV struct sr_dev_driver voltcraft_vc840_driver_info;
+extern SR_PRIV struct sr_dev_driver voltcraft_vc920_driver_info;
+extern SR_PRIV struct sr_dev_driver voltcraft_vc940_driver_info;
+extern SR_PRIV struct sr_dev_driver voltcraft_vc960_driver_info;
 extern SR_PRIV struct sr_dev_driver tenma_72_7745_driver_info;
 extern SR_PRIV struct sr_dev_driver tenma_72_7750_driver_info;
 #endif
@@ -237,6 +259,9 @@ SR_PRIV struct sr_dev_driver *drivers_list[] = {
 #endif
 #ifdef HAVE_HW_DEMO
 	&demo_driver_info,
+#endif
+#ifdef HAVE_HW_DEREE_DE5000
+	&deree_de5000_driver_info,
 #endif
 #ifdef HAVE_HW_FLUKE_DMM
 	&flukedmm_driver_info,
@@ -298,6 +323,9 @@ SR_PRIV struct sr_dev_driver *drivers_list[] = {
 #ifdef HAVE_HW_SALEAE_LOGIC16
 	&saleae_logic16_driver_info,
 #endif
+#ifdef HAVE_HW_SCPI_PPS
+	&scpi_pps_driver_info,
+#endif
 #ifdef HAVE_HW_SERIAL_DMM
 	&bbcgm_m2110_driver_info,
 	&digitek_dt4000zc_driver_info,
@@ -322,6 +350,9 @@ SR_PRIV struct sr_dev_driver *drivers_list[] = {
 	&voltcraft_vc820_ser_driver_info,
 	&voltcraft_vc830_ser_driver_info,
 	&voltcraft_vc840_ser_driver_info,
+	&voltcraft_vc920_ser_driver_info,
+	&voltcraft_vc940_ser_driver_info,
+	&voltcraft_vc960_ser_driver_info,
 	&uni_t_ut60a_ser_driver_info,
 	&uni_t_ut60e_ser_driver_info,
 	&uni_t_ut60g_ser_driver_info,
@@ -329,6 +360,11 @@ SR_PRIV struct sr_dev_driver *drivers_list[] = {
 	&uni_t_ut61c_ser_driver_info,
 	&uni_t_ut61d_ser_driver_info,
 	&uni_t_ut61e_ser_driver_info,
+	&uni_t_ut71a_ser_driver_info,
+	&uni_t_ut71b_ser_driver_info,
+	&uni_t_ut71c_ser_driver_info,
+	&uni_t_ut71d_ser_driver_info,
+	&uni_t_ut71e_ser_driver_info,
 	&iso_tech_idm103n_driver_info,
 	&tenma_72_7745_ser_driver_info,
 	&tenma_72_7750_ser_driver_info,
@@ -355,9 +391,17 @@ SR_PRIV struct sr_dev_driver *drivers_list[] = {
 	&uni_t_ut61c_driver_info,
 	&uni_t_ut61d_driver_info,
 	&uni_t_ut61e_driver_info,
+	&uni_t_ut71a_driver_info,
+	&uni_t_ut71b_driver_info,
+	&uni_t_ut71c_driver_info,
+	&uni_t_ut71d_driver_info,
+	&uni_t_ut71e_driver_info,
 	&voltcraft_vc820_driver_info,
 	&voltcraft_vc830_driver_info,
 	&voltcraft_vc840_driver_info,
+	&voltcraft_vc920_driver_info,
+	&voltcraft_vc940_driver_info,
+	&voltcraft_vc960_driver_info,
 	&tenma_72_7745_driver_info,
 	&tenma_72_7750_driver_info,
 #endif

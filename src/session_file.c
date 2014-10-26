@@ -47,6 +47,8 @@
  */
 
 extern SR_PRIV struct sr_dev_driver session_driver;
+static int session_driver_initialized = 0;
+
 
 /** @private */
 SR_PRIV int sr_sessionfile_check(const char *filename)
@@ -72,7 +74,6 @@ SR_PRIV int sr_sessionfile_check(const char *filename)
 		return SR_ERR;
 
 	/* check "version" */
-	version = 0;
 	if (!(zf = zip_fopen(archive, "version", 0))) {
 		sr_dbg("Not a sigrok session file: no version found.");
 		return SR_ERR;
@@ -105,12 +106,13 @@ SR_PRIV int sr_sessionfile_check(const char *filename)
 /**
  * Load the session from the specified filename.
  *
- * @param filename The name of the session file to load. Must not be NULL.
- * @param session The session to load the file into. Must not be NULL.
+ * @param filename The name of the session file to load.
+ * @param session The session to load the file into.
  *
- * @return SR_OK upon success, SR_ERR_ARG upon invalid arguments,
- *         SR_ERR_MALLOC upon memory allocation errors, or SR_ERR upon
- *         other errors.
+ * @retval SR_OK Success
+ * @retval SR_ERR_MALLOC Memory allocation error
+ * @retval SR_ERR_DATA Malformed session file
+ * @retval SR_ERR This is not a session file
  */
 SR_API int sr_session_load(const char *filename, struct sr_session **session)
 {
@@ -121,7 +123,7 @@ SR_API int sr_session_load(const char *filename, struct sr_session **session)
 	struct zip_stat zs;
 	struct sr_dev_inst *sdi;
 	struct sr_channel *ch;
-	int devcnt, ret, i, j;
+	int ret, i, j;
 	uint64_t tmp_u64, total_channels, enabled_channels, p;
 	char **sections, **keys, *metafile, *val;
 	char channelname[SR_MAX_CHANNELNAME_LEN + 1];
@@ -153,10 +155,10 @@ SR_API int sr_session_load(const char *filename, struct sr_session **session)
 	if ((ret = sr_session_new(session)) != SR_OK)
 		return ret;
 
-	devcnt = 0;
+	ret = SR_OK;
 	capturefiles = g_ptr_array_new_with_free_func(g_free);
 	sections = g_key_file_get_groups(kf, NULL);
-	for (i = 0; sections[i]; i++) {
+	for (i = 0; sections[i] && ret == SR_OK; i++) {
 		if (!strcmp(sections[i], "global"))
 			/* nothing really interesting in here yet */
 			continue;
@@ -168,27 +170,43 @@ SR_API int sr_session_load(const char *filename, struct sr_session **session)
 			for (j = 0; keys[j]; j++) {
 				val = g_key_file_get_string(kf, sections[i], keys[j], NULL);
 				if (!strcmp(keys[j], "capturefile")) {
-					sdi = sr_dev_inst_new(devcnt, SR_ST_ACTIVE, NULL, NULL, NULL);
+					sdi = sr_dev_inst_new(SR_ST_ACTIVE, NULL, NULL, NULL);
 					sdi->driver = &session_driver;
-					if (devcnt == 0)
+					if (!session_driver_initialized) {
 						/* first device, init the driver */
+						session_driver_initialized = 1;
 						sdi->driver->init(NULL);
+					}
 					sr_dev_open(sdi);
 					sr_session_dev_add(*session, sdi);
+					(*session)->owned_devs = g_slist_append(
+							(*session)->owned_devs, sdi);
 					sdi->driver->config_set(SR_CONF_SESSIONFILE,
 							g_variant_new_string(filename), sdi, NULL);
 					sdi->driver->config_set(SR_CONF_CAPTUREFILE,
 							g_variant_new_string(val), sdi, NULL);
 					g_ptr_array_add(capturefiles, val);
 				} else if (!strcmp(keys[j], "samplerate")) {
+					if (!sdi) {
+						ret = SR_ERR_DATA;
+						break;
+					}
 					sr_parse_sizestring(val, &tmp_u64);
 					sdi->driver->config_set(SR_CONF_SAMPLERATE,
 							g_variant_new_uint64(tmp_u64), sdi, NULL);
 				} else if (!strcmp(keys[j], "unitsize")) {
+					if (!sdi) {
+						ret = SR_ERR_DATA;
+						break;
+					}
 					tmp_u64 = strtoull(val, NULL, 10);
 					sdi->driver->config_set(SR_CONF_CAPTURE_UNITSIZE,
 							g_variant_new_uint64(tmp_u64), sdi, NULL);
 				} else if (!strcmp(keys[j], "total probes")) {
+					if (!sdi) {
+						ret = SR_ERR_DATA;
+						break;
+					}
 					total_channels = strtoull(val, NULL, 10);
 					sdi->driver->config_set(SR_CONF_NUM_LOGIC_CHANNELS,
 							g_variant_new_uint64(total_channels), sdi, NULL);
@@ -200,8 +218,10 @@ SR_API int sr_session_load(const char *filename, struct sr_session **session)
 						sdi->channels = g_slist_append(sdi->channels, ch);
 					}
 				} else if (!strncmp(keys[j], "probe", 5)) {
-					if (!sdi)
-						continue;
+					if (!sdi) {
+						ret = SR_ERR_DATA;
+						break;
+					}
 					enabled_channels++;
 					tmp_u64 = strtoul(keys[j]+5, NULL, 10);
 					/* sr_session_save() */
@@ -214,12 +234,11 @@ SR_API int sr_session_load(const char *filename, struct sr_session **session)
 				for (p = enabled_channels; p < total_channels; p++)
 					sr_dev_channel_enable(sdi, p, FALSE);
 		}
-		devcnt++;
 	}
 	g_strfreev(sections);
 	g_key_file_free(kf);
 
-	return SR_OK;
+	return ret;
 }
 
 /**

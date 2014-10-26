@@ -71,12 +71,13 @@ static const char *channel_names[] = {
 	"9", "10", "11", "12", "13", "14", "15", "16",
 };
 
-static const int32_t hwcaps[] = {
+static const uint32_t devopts[] = {
 	SR_CONF_LOGIC_ANALYZER,
-	SR_CONF_SAMPLERATE,
-	SR_CONF_TRIGGER_MATCH,
-	SR_CONF_CAPTURE_RATIO,
-	SR_CONF_LIMIT_MSEC,
+	SR_CONF_LIMIT_MSEC | SR_CONF_GET | SR_CONF_SET,
+	SR_CONF_LIMIT_SAMPLES | SR_CONF_SET,
+	SR_CONF_SAMPLERATE | SR_CONF_GET | SR_CONF_SET | SR_CONF_LIST,
+	SR_CONF_TRIGGER_MATCH | SR_CONF_LIST,
+	SR_CONF_CAPTURE_RATIO | SR_CONF_GET | SR_CONF_SET,
 };
 
 static const int32_t trigger_matches[] = {
@@ -200,10 +201,10 @@ static int sigma_read_pos(uint32_t *stoppos, uint32_t *triggerpos,
 
 	/* Not really sure why this must be done, but according to spec. */
 	if ((--*stoppos & 0x1ff) == 0x1ff)
-		stoppos -= 64;
+		*stoppos -= 64;
 
 	if ((*--triggerpos & 0x1ff) == 0x1ff)
-		triggerpos -= 64;
+		*triggerpos -= 64;
 
 	return 1;
 }
@@ -376,7 +377,7 @@ static GSList *scan(GSList *options)
 	devc->use_triggers = 0;
 
 	/* Register SIGMA device. */
-	if (!(sdi = sr_dev_inst_new(0, SR_ST_INITIALIZING, USB_VENDOR_NAME,
+	if (!(sdi = sr_dev_inst_new(SR_ST_INITIALIZING, USB_VENDOR_NAME,
 				    USB_MODEL_NAME, NULL))) {
 		sr_err("%s: sdi was NULL", __func__);
 		goto free;
@@ -813,7 +814,7 @@ static int cleanup(void)
 	return dev_clear();
 }
 
-static int config_get(int id, GVariant **data, const struct sr_dev_inst *sdi,
+static int config_get(uint32_t key, GVariant **data, const struct sr_dev_inst *sdi,
 		const struct sr_channel_group *cg)
 {
 	struct dev_context *devc;
@@ -824,7 +825,7 @@ static int config_get(int id, GVariant **data, const struct sr_dev_inst *sdi,
 		return SR_ERR;
 	devc = sdi->priv;
 
-	switch (id) {
+	switch (key) {
 	case SR_CONF_SAMPLERATE:
 		*data = g_variant_new_uint64(devc->cur_samplerate);
 		break;
@@ -841,7 +842,7 @@ static int config_get(int id, GVariant **data, const struct sr_dev_inst *sdi,
 	return SR_OK;
 }
 
-static int config_set(int id, GVariant *data, const struct sr_dev_inst *sdi,
+static int config_set(uint32_t key, GVariant *data, const struct sr_dev_inst *sdi,
 		const struct sr_channel_group *cg)
 {
 	struct dev_context *devc;
@@ -856,7 +857,7 @@ static int config_set(int id, GVariant *data, const struct sr_dev_inst *sdi,
 	devc = sdi->priv;
 
 	ret = SR_OK;
-	switch (id) {
+	switch (key) {
 	case SR_CONF_SAMPLERATE:
 		ret = set_samplerate(sdi, g_variant_get_uint64(data));
 		break;
@@ -885,7 +886,7 @@ static int config_set(int id, GVariant *data, const struct sr_dev_inst *sdi,
 	return ret;
 }
 
-static int config_list(int key, GVariant **data, const struct sr_dev_inst *sdi,
+static int config_list(uint32_t key, GVariant **data, const struct sr_dev_inst *sdi,
 		const struct sr_channel_group *cg)
 {
 	GVariant *gvar;
@@ -896,8 +897,8 @@ static int config_list(int key, GVariant **data, const struct sr_dev_inst *sdi,
 
 	switch (key) {
 	case SR_CONF_DEVICE_OPTIONS:
-		*data = g_variant_new_fixed_array(G_VARIANT_TYPE_INT32,
-				hwcaps, ARRAY_SIZE(hwcaps), sizeof(int32_t));
+		*data = g_variant_new_fixed_array(G_VARIANT_TYPE_UINT32,
+				devopts, ARRAY_SIZE(devopts), sizeof(uint32_t));
 		break;
 	case SR_CONF_SAMPLERATE:
 		g_variant_builder_init(&gvb, G_VARIANT_TYPE("a{sv}"));
@@ -1341,6 +1342,7 @@ static void add_trigger_function(enum triggerop oper, enum triggerfunc func,
 		aset = (*mask >> i) & 1;
 		bset = x[b][a];
 
+		rset = 0;
 		if (func == FUNC_AND || func == FUNC_NAND)
 			rset = aset & bset;
 		else if (func == FUNC_OR || func == FUNC_NOR)

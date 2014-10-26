@@ -409,8 +409,6 @@ static int init(struct sr_input *in, GHashTable *options)
 	char name[16];
 	struct context *inc;
 
-	inc = g_malloc0(sizeof(struct context));
-
 	num_channels = g_variant_get_int32(g_hash_table_lookup(options, "numchannels"));
 	if (num_channels < 1) {
 		sr_err("Invalid value for numchannels: must be at least 1.");
@@ -420,6 +418,7 @@ static int init(struct sr_input *in, GHashTable *options)
 		sr_err("No more than 64 channels supported.");
 		return SR_ERR_ARG;
 	}
+	inc = in->priv = g_malloc0(sizeof(struct context));
 	inc->maxchannels = num_channels;
 
 	inc->downsample = g_variant_get_int32(g_hash_table_lookup(options, "downsample"));
@@ -430,7 +429,7 @@ static int init(struct sr_input *in, GHashTable *options)
 	inc->skip = g_variant_get_int32(g_hash_table_lookup(options, "skip"));
 	inc->skip /= inc->downsample;
 
-	in->sdi = sr_dev_inst_new(0, SR_ST_ACTIVE, NULL, NULL, NULL);
+	in->sdi = sr_dev_inst_new(SR_ST_ACTIVE, NULL, NULL, NULL);
 	in->priv = inc;
 
 	for (i = 0; i < num_channels; i++) {
@@ -458,7 +457,7 @@ static gboolean have_header(GString *buf)
 	return FALSE;
 }
 
-static int receive(const struct sr_input *in, GString *buf)
+static int process_buffer(struct sr_input *in)
 {
 	struct sr_datafeed_packet packet;
 	struct sr_datafeed_meta meta;
@@ -467,18 +466,9 @@ static int receive(const struct sr_input *in, GString *buf)
 	uint64_t samplerate;
 	char *p;
 
-	g_string_append_len(in->buf, buf->str, buf->len);
-
 	inc = in->priv;
-	if (!inc->got_header) {
-		if (!have_header(in->buf))
-			return SR_OK;
-		if (!parse_header(in, in->buf) != SR_OK)
-			/* There was a header in there, but it was malformed. */
-			return SR_ERR;
-
+	if (!inc->started) {
 		std_session_send_df_header(in->sdi, LOG_PREFIX);
-		inc->started = TRUE;
 
 		packet.type = SR_DF_META;
 		packet.payload = &meta;
@@ -487,6 +477,8 @@ static int receive(const struct sr_input *in, GString *buf)
 		meta.config = g_slist_append(NULL, src);
 		sr_session_send(in->sdi, &packet);
 		sr_config_free(src);
+
+		inc->started = TRUE;
 	}
 
 	while ((p = g_strrstr_len(in->buf->str, in->buf->len, "\n"))) {
@@ -500,23 +492,57 @@ static int receive(const struct sr_input *in, GString *buf)
 	return SR_OK;
 }
 
-static int cleanup(struct sr_input *in)
+static int receive(struct sr_input *in, GString *buf)
+{
+	struct context *inc;
+	int ret;
+
+	g_string_append_len(in->buf, buf->str, buf->len);
+
+	inc = in->priv;
+	if (!inc->got_header) {
+		if (!have_header(in->buf))
+			return SR_OK;
+		if (!parse_header(in, in->buf) != SR_OK)
+			/* There was a header in there, but it was malformed. */
+			return SR_ERR;
+
+		in->sdi_ready = TRUE;
+		/* sdi is ready, notify frontend. */
+		return SR_OK;
+	}
+
+	ret = process_buffer(in);
+
+	return ret;
+}
+
+static int end(struct sr_input *in)
 {
 	struct sr_datafeed_packet packet;
 	struct context *inc;
+	int ret;
+
+	if (in->sdi_ready)
+		ret = process_buffer(in);
+	else
+		ret = SR_OK;
 
 	inc = in->priv;
 	if (inc->started) {
-		/* End of stream. */
 		packet.type = SR_DF_END;
 		sr_session_send(in->sdi, &packet);
 	}
 
-	g_slist_free_full(inc->channels, free_channel);
-	g_free(inc);
-	in->priv = NULL;
+	return ret;
+}
 
-	return SR_OK;
+static void cleanup(struct sr_input *in)
+{
+	struct context *inc;
+
+	inc = in->priv;
+	g_slist_free_full(inc->channels, free_channel);
 }
 
 static struct sr_option options[] = {
@@ -548,5 +574,6 @@ SR_PRIV struct sr_input_module input_vcd = {
 	.format_match = format_match,
 	.init = init,
 	.receive = receive,
+	.end = end,
 	.cleanup = cleanup,
 };

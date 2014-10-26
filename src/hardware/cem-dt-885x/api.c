@@ -24,22 +24,22 @@
 /* 23ms is the longest interval between tokens. */
 #define MAX_SCAN_TIME 25 * 1000
 
-static const int32_t hwopts[] = {
+static const uint32_t scanopts[] = {
 	SR_CONF_CONN,
 };
 
-static const int32_t hwcaps[] = {
+static const uint32_t devopts[] = {
 	SR_CONF_SOUNDLEVELMETER,
-	SR_CONF_LIMIT_SAMPLES,
 	SR_CONF_CONTINUOUS,
-	SR_CONF_SPL_WEIGHT_FREQ,
-	SR_CONF_SPL_WEIGHT_TIME,
-	SR_CONF_SPL_MEASUREMENT_RANGE,
-	SR_CONF_DATALOG,
-	SR_CONF_HOLD_MAX,
-	SR_CONF_HOLD_MIN,
-	SR_CONF_POWER_OFF,
-	SR_CONF_DATA_SOURCE,
+	SR_CONF_LIMIT_SAMPLES | SR_CONF_GET | SR_CONF_SET,
+	SR_CONF_SPL_WEIGHT_FREQ | SR_CONF_GET | SR_CONF_SET | SR_CONF_LIST,
+	SR_CONF_SPL_WEIGHT_TIME | SR_CONF_GET | SR_CONF_SET | SR_CONF_LIST,
+	SR_CONF_SPL_MEASUREMENT_RANGE | SR_CONF_GET | SR_CONF_SET | SR_CONF_LIST,
+	SR_CONF_DATALOG | SR_CONF_GET | SR_CONF_SET,
+	SR_CONF_HOLD_MAX | SR_CONF_GET | SR_CONF_SET,
+	SR_CONF_HOLD_MIN | SR_CONF_GET | SR_CONF_SET,
+	SR_CONF_POWER_OFF | SR_CONF_GET | SR_CONF_SET,
+	SR_CONF_DATA_SOURCE | SR_CONF_GET | SR_CONF_SET | SR_CONF_LIST,
 };
 
 static const char *weight_freq[] = {
@@ -97,16 +97,16 @@ static GSList *scan(GSList *options)
 	if (!(serial = sr_serial_dev_inst_new(conn, SERIALCOMM)))
 		return NULL;
 
-	if (serial_open(serial, SERIAL_RDONLY | SERIAL_NONBLOCK) != SR_OK)
+	if (serial_open(serial, SERIAL_RDONLY) != SR_OK)
 		return NULL;
 
 	devices = NULL;
 	drvc = di->priv;
 	start = g_get_monotonic_time();
 	while (g_get_monotonic_time() - start < MAX_SCAN_TIME) {
-		if (serial_read(serial, &c, 1) == 1 && c == 0xa5) {
+		if (serial_read_nonblocking(serial, &c, 1) == 1 && c == 0xa5) {
 			/* Found one. */
-			if (!(sdi = sr_dev_inst_new(0, SR_ST_INACTIVE, "CEM",
+			if (!(sdi = sr_dev_inst_new(SR_ST_INACTIVE, "CEM",
 					"DT-885x", NULL)))
 				return NULL;
 
@@ -165,7 +165,7 @@ static int cleanup(void)
 	return std_dev_clear(di, NULL);
 }
 
-static int config_get(int key, GVariant **data, const struct sr_dev_inst *sdi,
+static int config_get(uint32_t key, GVariant **data, const struct sr_dev_inst *sdi,
 		const struct sr_channel_group *cg)
 {
 	struct dev_context *devc;
@@ -237,7 +237,7 @@ static int config_get(int key, GVariant **data, const struct sr_dev_inst *sdi,
 	return ret;
 }
 
-static int config_set(int key, GVariant *data, const struct sr_dev_inst *sdi,
+static int config_set(uint32_t key, GVariant *data, const struct sr_dev_inst *sdi,
 		const struct sr_channel_group *cg)
 {
 	struct dev_context *devc;
@@ -327,7 +327,7 @@ static int config_set(int key, GVariant *data, const struct sr_dev_inst *sdi,
 	return ret;
 }
 
-static int config_list(int key, GVariant **data, const struct sr_dev_inst *sdi,
+static int config_list(uint32_t key, GVariant **data, const struct sr_dev_inst *sdi,
 		const struct sr_channel_group *cg)
 {
 	GVariant *tuple, *range[2];
@@ -341,12 +341,12 @@ static int config_list(int key, GVariant **data, const struct sr_dev_inst *sdi,
 	ret = SR_OK;
 	switch (key) {
 	case SR_CONF_SCAN_OPTIONS:
-		*data = g_variant_new_fixed_array(G_VARIANT_TYPE_INT32,
-				hwopts, ARRAY_SIZE(hwopts), sizeof(int32_t));
+		*data = g_variant_new_fixed_array(G_VARIANT_TYPE_UINT32,
+				scanopts, ARRAY_SIZE(scanopts), sizeof(uint32_t));
 		break;
 	case SR_CONF_DEVICE_OPTIONS:
-		*data = g_variant_new_fixed_array(G_VARIANT_TYPE_INT32,
-				hwcaps, ARRAY_SIZE(hwcaps), sizeof(int32_t));
+		*data = g_variant_new_fixed_array(G_VARIANT_TYPE_UINT32,
+				devopts, ARRAY_SIZE(devopts), sizeof(uint32_t));
 		break;
 	case SR_CONF_SPL_WEIGHT_FREQ:
 		*data = g_variant_new_strv(weight_freq, ARRAY_SIZE(weight_freq));

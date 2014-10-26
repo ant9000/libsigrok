@@ -52,13 +52,13 @@ static const struct zp_model zeroplus_models[] = {
 	{ 0, 0, 0, 0, 0, 0 }
 };
 
-static const int32_t hwcaps[] = {
+static const uint32_t devopts[] = {
 	SR_CONF_LOGIC_ANALYZER,
-	SR_CONF_SAMPLERATE,
-	SR_CONF_TRIGGER_MATCH,
-	SR_CONF_CAPTURE_RATIO,
-	SR_CONF_VOLTAGE_THRESHOLD,
-	SR_CONF_LIMIT_SAMPLES,
+	SR_CONF_LIMIT_SAMPLES | SR_CONF_SET | SR_CONF_LIST,
+	SR_CONF_SAMPLERATE | SR_CONF_GET | SR_CONF_SET | SR_CONF_LIST,
+	SR_CONF_TRIGGER_MATCH | SR_CONF_LIST,
+	SR_CONF_CAPTURE_RATIO | SR_CONF_GET | SR_CONF_SET,
+	SR_CONF_VOLTAGE_THRESHOLD | SR_CONF_GET | SR_CONF_SET | SR_CONF_LIST,
 };
 
 static const int32_t trigger_matches[] = {
@@ -168,9 +168,11 @@ static GSList *scan(GSList *options)
 	struct dev_context *devc;
 	const struct zp_model *prof;
 	struct libusb_device_descriptor des;
+	struct libusb_device_handle *hdl;
 	libusb_device **devlist;
 	GSList *devices;
-	int ret, devcnt, i, j;
+	int ret, i, j;
+	char serial_num[64], connection_id[64];
 
 	(void)options;
 
@@ -179,7 +181,6 @@ static GSList *scan(GSList *options)
 	devices = NULL;
 
 	/* Find all ZEROPLUS analyzers and add them to device list. */
-	devcnt = 0;
 	libusb_get_device_list(drvc->sr_ctx->libusb_ctx, &devlist); /* TODO: Errors. */
 
 	for (i = 0; devlist[i]; i++) {
@@ -189,6 +190,23 @@ static GSList *scan(GSList *options)
 			       libusb_error_name(ret));
 			continue;
 		}
+
+		if ((ret = libusb_open(devlist[i], &hdl)) < 0)
+			continue;
+
+		if (des.iSerialNumber == 0) {
+			serial_num[0] = '\0';
+		} else if ((ret = libusb_get_string_descriptor_ascii(hdl,
+				des.iSerialNumber, (unsigned char *) serial_num,
+				sizeof(serial_num))) < 0) {
+			sr_warn("Failed to get serial number string descriptor: %s.",
+				libusb_error_name(ret));
+			continue;
+		}
+
+		libusb_close(hdl);
+
+		usb_get_port_path(devlist[i], connection_id, sizeof(connection_id));
 
 		prof = NULL;
 		for (j = 0; j < zeroplus_models[j].vid; j++) {
@@ -203,12 +221,14 @@ static GSList *scan(GSList *options)
 		sr_info("Found ZEROPLUS %s.", prof->model_name);
 
 		/* Register the device with libsigrok. */
-		if (!(sdi = sr_dev_inst_new(devcnt, SR_ST_INACTIVE,
+		if (!(sdi = sr_dev_inst_new(SR_ST_INACTIVE,
 				VENDOR_NAME, prof->model_name, NULL))) {
 			sr_err("%s: sr_dev_inst_new failed", __func__);
 			return NULL;
 		}
 		sdi->driver = di;
+		sdi->serial_num = g_strdup(serial_num);
+		sdi->connection_id = g_strdup(connection_id);
 
 		/* Allocate memory for our private driver context. */
 		if (!(devc = g_try_malloc0(sizeof(struct dev_context)))) {
@@ -244,8 +264,6 @@ static GSList *scan(GSList *options)
 		sdi->conn = sr_usb_dev_inst_new(
 			libusb_get_bus_number(devlist[i]),
 			libusb_get_device_address(devlist[i]), NULL);
-		devcnt++;
-
 	}
 	libusb_free_device_list(devlist, 1);
 
@@ -263,8 +281,8 @@ static int dev_open(struct sr_dev_inst *sdi)
 	struct drv_context *drvc;
 	struct sr_usb_dev_inst *usb;
 	libusb_device **devlist, *dev;
-	struct libusb_device_descriptor des;
 	int device_count, ret, i;
+	char connection_id[64];
 
 	drvc = di->priv;
 	usb = sdi->conn;
@@ -283,27 +301,22 @@ static int dev_open(struct sr_dev_inst *sdi)
 
 	dev = NULL;
 	for (i = 0; i < device_count; i++) {
-		if ((ret = libusb_get_device_descriptor(devlist[i], &des))) {
-			sr_err("Failed to get device descriptor: %s.",
-			       libusb_error_name(ret));
-			continue;
-		}
-		if (libusb_get_bus_number(devlist[i]) == usb->bus
-		    && libusb_get_device_address(devlist[i]) == usb->address) {
+		usb_get_port_path(devlist[i], connection_id, sizeof(connection_id));
+		if (!strcmp(sdi->connection_id, connection_id)) {
 			dev = devlist[i];
 			break;
 		}
 	}
 	if (!dev) {
-		sr_err("Device on bus %d address %d disappeared!",
-		       usb->bus, usb->address);
+		sr_err("Device on %d.%d (logical) / %s (physical) disappeared!",
+		       usb->bus, usb->address, sdi->connection_id);
 		return SR_ERR;
 	}
 
 	if (!(ret = libusb_open(dev, &(usb->devhdl)))) {
 		sdi->status = SR_ST_ACTIVE;
-		sr_info("Opened device %d on %d.%d interface %d.",
-			sdi->index, usb->bus, usb->address, USB_INTERFACE);
+		sr_info("Opened device on %d.%d (logical) / %s (physical) interface %d.",
+			usb->bus, usb->address, sdi->connection_id, USB_INTERFACE);
 	} else {
 		sr_err("Failed to open device: %s.", libusb_error_name(ret));
 		return SR_ERR;
@@ -366,8 +379,8 @@ static int dev_close(struct sr_dev_inst *sdi)
 	if (!usb->devhdl)
 		return SR_ERR;
 
-	sr_info("Closing device %d on %d.%d interface %d.", sdi->index,
-		usb->bus, usb->address, USB_INTERFACE);
+	sr_info("Closing device on %d.%d (logical) / %s (physical) interface %d.",
+		usb->bus, usb->address, sdi->connection_id, USB_INTERFACE);
 	libusb_release_interface(usb->devhdl, USB_INTERFACE);
 	libusb_reset_device(usb->devhdl);
 	libusb_close(usb->devhdl);
@@ -382,14 +395,14 @@ static int cleanup(void)
 	return std_dev_clear(di, NULL);
 }
 
-static int config_get(int id, GVariant **data, const struct sr_dev_inst *sdi,
+static int config_get(uint32_t key, GVariant **data, const struct sr_dev_inst *sdi,
 		const struct sr_channel_group *cg)
 {
 	struct dev_context *devc;
 
 	(void)cg;
 
-	switch (id) {
+	switch (key) {
 	case SR_CONF_SAMPLERATE:
 		if (sdi) {
 			devc = sdi->priv;
@@ -423,7 +436,7 @@ static int config_get(int id, GVariant **data, const struct sr_dev_inst *sdi,
 	return SR_OK;
 }
 
-static int config_set(int id, GVariant *data, const struct sr_dev_inst *sdi,
+static int config_set(uint32_t key, GVariant *data, const struct sr_dev_inst *sdi,
 		const struct sr_channel_group *cg)
 {
 	struct dev_context *devc;
@@ -439,7 +452,7 @@ static int config_set(int id, GVariant *data, const struct sr_dev_inst *sdi,
 		return SR_ERR_ARG;
 	}
 
-	switch (id) {
+	switch (key) {
 	case SR_CONF_SAMPLERATE:
 		return zp_set_samplerate(devc, g_variant_get_uint64(data));
 	case SR_CONF_LIMIT_SAMPLES:
@@ -456,7 +469,7 @@ static int config_set(int id, GVariant *data, const struct sr_dev_inst *sdi,
 	return SR_OK;
 }
 
-static int config_list(int key, GVariant **data, const struct sr_dev_inst *sdi,
+static int config_list(uint32_t key, GVariant **data, const struct sr_dev_inst *sdi,
 		const struct sr_channel_group *cg)
 {
 	struct dev_context *devc;
@@ -469,8 +482,8 @@ static int config_list(int key, GVariant **data, const struct sr_dev_inst *sdi,
 
 	switch (key) {
 	case SR_CONF_DEVICE_OPTIONS:
-		*data = g_variant_new_fixed_array(G_VARIANT_TYPE_INT32,
-				hwcaps, ARRAY_SIZE(hwcaps), sizeof(int32_t));
+		*data = g_variant_new_fixed_array(G_VARIANT_TYPE_UINT32,
+				devopts, ARRAY_SIZE(devopts), sizeof(uint32_t));
 		break;
 	case SR_CONF_SAMPLERATE:
 		devc = sdi->priv;

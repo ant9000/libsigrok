@@ -27,16 +27,16 @@
 #include "libsigrok-internal.h"
 #include "fluke-dmm.h"
 
-static const int32_t hwopts[] = {
+static const uint32_t scanopts[] = {
 	SR_CONF_CONN,
 	SR_CONF_SERIALCOMM,
 };
 
-static const int32_t hwcaps[] = {
+static const uint32_t devopts[] = {
 	SR_CONF_MULTIMETER,
-	SR_CONF_LIMIT_SAMPLES,
-	SR_CONF_LIMIT_MSEC,
 	SR_CONF_CONTINUOUS,
+	SR_CONF_LIMIT_SAMPLES | SR_CONF_SET,
+	SR_CONF_LIMIT_MSEC | SR_CONF_SET,
 };
 
 SR_PRIV struct sr_dev_driver flukedmm_driver_info;
@@ -78,7 +78,7 @@ static GSList *fluke_scan(const char *conn, const char *serialcomm)
 	if (!(serial = sr_serial_dev_inst_new(conn, serialcomm)))
 		return NULL;
 
-	if (serial_open(serial, SERIAL_RDWR | SERIAL_NONBLOCK) != SR_OK)
+	if (serial_open(serial, SERIAL_RDWR) != SR_OK)
 		return NULL;
 
 	drvc = di->priv;
@@ -90,9 +90,8 @@ static GSList *fluke_scan(const char *conn, const char *serialcomm)
 	while (!devices && retry < 3) {
 		retry++;
 		serial_flush(serial);
-		if (serial_write(serial, "ID\r", 3) == -1) {
-			sr_err("Unable to send ID string: %s.",
-			       strerror(errno));
+		if (serial_write_blocking(serial, "ID\r", 3, SERIAL_WRITE_TIMEOUT_MS) < 0) {
+			sr_err("Unable to send ID string");
 			continue;
 		}
 
@@ -123,7 +122,7 @@ static GSList *fluke_scan(const char *conn, const char *serialcomm)
 					continue;
 				/* Skip leading spaces in version number. */
 				for (s = 0; tokens[1][s] == ' '; s++);
-				if (!(sdi = sr_dev_inst_new(0, SR_ST_INACTIVE, "Fluke",
+				if (!(sdi = sr_dev_inst_new(SR_ST_INACTIVE, "Fluke",
 						tokens[0] + 6, tokens[1] + s)))
 					return NULL;
 				if (!(devc = g_try_malloc0(sizeof(struct dev_context)))) {
@@ -177,6 +176,7 @@ static GSList *scan(GSList *options)
 	if (!conn)
 		return NULL;
 
+	devices = NULL;
 	if (serialcomm) {
 		/* Use the provided comm specs. */
 		devices = fluke_scan(conn, serialcomm);
@@ -203,7 +203,7 @@ static int cleanup(void)
 	return std_dev_clear(di, NULL);
 }
 
-static int config_set(int id, GVariant *data, const struct sr_dev_inst *sdi,
+static int config_set(uint32_t key, GVariant *data, const struct sr_dev_inst *sdi,
 		const struct sr_channel_group *cg)
 {
 	struct dev_context *devc;
@@ -218,7 +218,7 @@ static int config_set(int id, GVariant *data, const struct sr_dev_inst *sdi,
 		return SR_ERR_BUG;
 	}
 
-	switch (id) {
+	switch (key) {
 	case SR_CONF_LIMIT_MSEC:
 		/* TODO: not yet implemented */
 		if (g_variant_get_uint64(data) == 0) {
@@ -241,7 +241,7 @@ static int config_set(int id, GVariant *data, const struct sr_dev_inst *sdi,
 	return SR_OK;
 }
 
-static int config_list(int key, GVariant **data, const struct sr_dev_inst *sdi,
+static int config_list(uint32_t key, GVariant **data, const struct sr_dev_inst *sdi,
 		const struct sr_channel_group *cg)
 {
 	(void)sdi;
@@ -249,12 +249,12 @@ static int config_list(int key, GVariant **data, const struct sr_dev_inst *sdi,
 
 	switch (key) {
 	case SR_CONF_SCAN_OPTIONS:
-		*data = g_variant_new_fixed_array(G_VARIANT_TYPE_INT32,
-				hwopts, ARRAY_SIZE(hwopts), sizeof(int32_t));
+		*data = g_variant_new_fixed_array(G_VARIANT_TYPE_UINT32,
+				scanopts, ARRAY_SIZE(scanopts), sizeof(uint32_t));
 		break;
 	case SR_CONF_DEVICE_OPTIONS:
-		*data = g_variant_new_fixed_array(G_VARIANT_TYPE_INT32,
-				hwcaps, ARRAY_SIZE(hwcaps), sizeof(int32_t));
+		*data = g_variant_new_fixed_array(G_VARIANT_TYPE_UINT32,
+				devopts, ARRAY_SIZE(devopts), sizeof(uint32_t));
 		break;
 	default:
 		return SR_ERR_NA;
@@ -286,8 +286,8 @@ static int dev_acquisition_start(const struct sr_dev_inst *sdi, void *cb_data)
 	serial_source_add(sdi->session, serial, G_IO_IN, 50,
 			fluke_receive_data, (void *)sdi);
 
-	if (serial_write(serial, "QM\r", 3) == -1) {
-		sr_err("Unable to send QM: %s.", strerror(errno));
+	if (serial_write_blocking(serial, "QM\r", 3, SERIAL_WRITE_TIMEOUT_MS) < 0) {
+		sr_err("Unable to send QM.");
 		return SR_ERR;
 	}
 	devc->cmd_sent_at = g_get_monotonic_time() / 1000;

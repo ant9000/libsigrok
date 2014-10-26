@@ -393,7 +393,7 @@ static int init(struct sr_input *in, GHashTable *options)
 	struct context *inc;
 	const char *s;
 
-	in->sdi = sr_dev_inst_new(0, SR_ST_ACTIVE, NULL, NULL, NULL);
+	in->sdi = sr_dev_inst_new(SR_ST_ACTIVE, NULL, NULL, NULL);
 	in->priv = inc = g_malloc0(sizeof(struct context));
 
 	inc->single_column = g_variant_get_int32(g_hash_table_lookup(options, "single-column"));
@@ -506,7 +506,7 @@ static int initial_parse(const struct sr_input *in, GString *buf)
 	}
 	if (!lines[l]) {
 		/* Not enough data for a proper line yet. */
-		ret = SR_OK_CONTINUE;
+		ret = SR_ERR_NA;
 		goto out;
 	}
 
@@ -557,7 +557,7 @@ static int initial_parse(const struct sr_input *in, GString *buf)
 		if (inc->header && inc->multi_column_mode && strlen(columns[i]))
 			g_string_assign(channel_name, columns[i]);
 		else
-			g_string_printf(channel_name, "%lu", i);
+			g_string_printf(channel_name, "%zu", i);
 		ch = sr_channel_new(i, SR_CHANNEL_LOGIC, TRUE, channel_name->str);
 		in->sdi->channels = g_slist_append(in->sdi->channels, ch);
 	}
@@ -589,11 +589,11 @@ static int initial_receive(const struct sr_input *in)
 
 	if (!(termination = get_line_termination(in->buf)))
 		/* Don't have a full line yet. */
-		return SR_OK_CONTINUE;
+		return SR_ERR_NA;
 
 	if (!(p = g_strrstr_len(in->buf->str, in->buf->len, termination)))
 		/* Don't have a full line yet. */
-		return SR_OK_CONTINUE;
+		return SR_ERR_NA;
 	len = p - in->buf->str - 1;
 	new_buf = g_string_new_len(in->buf->str, len);
 	g_string_append_c(new_buf, '\0');
@@ -610,7 +610,7 @@ static int initial_receive(const struct sr_input *in)
 	return ret;
 }
 
-static int receive(const struct sr_input *in, GString *buf)
+static int process_buffer(struct sr_input *in)
 {
 	struct sr_datafeed_packet packet;
 	struct sr_datafeed_meta meta;
@@ -621,18 +621,8 @@ static int receive(const struct sr_input *in, GString *buf)
 	int max_columns, ret, l;
 	char *p, **lines, **columns;
 
-	g_string_append_len(in->buf, buf->str, buf->len);
-
 	inc = in->priv;
-	if (!inc->termination) {
-		ret = initial_receive(in);
-		if (ret == SR_OK_CONTINUE)
-			/* Not enough data yet. */
-			return SR_OK_CONTINUE;
-		else if (ret != SR_OK)
-			return SR_ERR;
-
-		inc->started = TRUE;
+	if (!inc->started) {
 		std_session_send_df_header(in->sdi, LOG_PREFIX);
 
 		if (inc->samplerate) {
@@ -644,6 +634,8 @@ static int receive(const struct sr_input *in, GString *buf)
 			sr_session_send(in->sdi, &packet);
 			sr_config_free(src);
 		}
+
+		inc->started = TRUE;
 	}
 
 	if (!(p = g_strrstr_len(in->buf->str, in->buf->len, inc->termination)))
@@ -659,6 +651,7 @@ static int receive(const struct sr_input *in, GString *buf)
 	else
 		max_columns = 1;
 
+	ret = SR_OK;
 	lines = g_strsplit_set(in->buf->str, "\r\n", 0);
 	for (l = 0; lines[l]; l++) {
 		inc->line_number++;
@@ -671,6 +664,13 @@ static int receive(const struct sr_input *in, GString *buf)
 		strip_comment(lines[l], inc->comment);
 		if (lines[l][0] == '\0') {
 			sr_spew("Comment-only line %zu skipped.", inc->line_number);
+			continue;
+		}
+
+		/* Skip the header line, its content was used as the channel names. */
+		if (inc->header) {
+			sr_spew("Header line %zu skipped.", inc->line_number);
+			inc->header = FALSE;
 			continue;
 		}
 
@@ -717,23 +717,60 @@ static int receive(const struct sr_input *in, GString *buf)
 	g_strfreev(lines);
 	g_string_erase(in->buf, 0, p - in->buf->str + 1);
 
-	return SR_OK;
+	return ret;
 }
 
-static int cleanup(struct sr_input *in)
+static int receive(struct sr_input *in, GString *buf)
+{
+	struct context *inc;
+	int ret;
+
+	g_string_append_len(in->buf, buf->str, buf->len);
+
+	inc = in->priv;
+	if (!inc->termination) {
+		if ((ret = initial_receive(in)) == SR_ERR_NA)
+			/* Not enough data yet. */
+			return SR_OK;
+		else if (ret != SR_OK)
+			return SR_ERR;
+
+		/* sdi is ready, notify frontend. */
+		in->sdi_ready = TRUE;
+		return SR_OK;
+	}
+
+	ret = process_buffer(in);
+
+	return ret;
+}
+
+static int end(struct sr_input *in)
 {
 	struct context *inc;
 	struct sr_datafeed_packet packet;
+	int ret;
+
+	if (in->sdi_ready)
+		ret = process_buffer(in);
+	else
+		ret = SR_OK;
 
 	inc = in->priv;
-	if (!inc)
-		return SR_OK;
-
 	if (inc->started) {
 		/* End of stream. */
 		packet.type = SR_DF_END;
 		sr_session_send(in->sdi, &packet);
 	}
+
+	return ret;
+}
+
+static void cleanup(struct sr_input *in)
+{
+	struct context *inc;
+
+	inc = in->priv;
 
 	if (inc->delimiter)
 		g_string_free(inc->delimiter, TRUE);
@@ -746,11 +783,6 @@ static int cleanup(struct sr_input *in)
 
 	if (inc->sample_buffer)
 		g_free(inc->sample_buffer);
-
-	g_free(inc);
-	in->priv = NULL;
-
-	return SR_OK;
 }
 
 static struct sr_option options[] = {
@@ -792,5 +824,6 @@ SR_PRIV struct sr_input_module input_csv = {
 	.format_match = format_match,
 	.init = init,
 	.receive = receive,
+	.end = end,
 	.cleanup = cleanup,
 };

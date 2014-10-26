@@ -1107,7 +1107,7 @@ SR_PRIV int gmc_mh_1x_2x_receive_data(int fd, int revents, void *cb_data)
 
 	if (revents == G_IO_IN) { /* Serial data arrived. */
 		while (GMC_BUFSIZE - devc->buflen - 1 > 0) {
-			len = serial_read(serial, devc->buf + devc->buflen, 1);
+			len = serial_read_nonblocking(serial, devc->buf + devc->buflen, 1);
 			if (len < 1)
 				break;
 			buf = *(devc->buf + devc->buflen);
@@ -1201,7 +1201,7 @@ SR_PRIV int gmc_mh_2x_receive_data(int fd, int revents, void *cb_data)
 
 	if (revents == G_IO_IN) { /* Serial data arrived. */
 		while (GMC_BUFSIZE - devc->buflen - 1 > 0) {
-			len = serial_read(serial, devc->buf + devc->buflen, 1);
+			len = serial_read_nonblocking(serial, devc->buf + devc->buflen, 1);
 			if (len < 1)
 				break;
 			buf = *(devc->buf + devc->buflen);
@@ -1307,7 +1307,7 @@ int req_meas14(const struct sr_dev_inst *sdi)
 	devc->cmd_idx = 0;
 	create_cmd_14(devc->addr, 8, params, msg);
 	devc->req_sent_at = g_get_monotonic_time();
-	if (serial_write(serial, msg, sizeof(msg)) == -1) {
+	if (serial_write_blocking(serial, msg, sizeof(msg), 0) < (int)sizeof(msg)) {
 		return SR_ERR;
 	}
 
@@ -1336,13 +1336,13 @@ int req_stat14(const struct sr_dev_inst *sdi, gboolean power_on)
 
 	if (power_on) {
 		sr_info("Write some data and wait 3s to turn on powered off device...");
-		if (serial_write(serial, msg, sizeof(msg)) < 0)
+		if (serial_write_blocking(serial, msg, sizeof(msg), 0) < 0)
 			return SR_ERR;
 		g_usleep(1*1000*1000);
-		if (serial_write(serial, msg, sizeof(msg)) < 0)
+		if (serial_write_blocking(serial, msg, sizeof(msg), 0) < 0)
 			return SR_ERR;
 		g_usleep(1*1000*1000);
-		if (serial_write(serial, msg, sizeof(msg)) < 0)
+		if (serial_write_blocking(serial, msg, sizeof(msg), 0) < 0)
 			return SR_ERR;
 		g_usleep(1*1000*1000);
 		serial_flush(serial);
@@ -1350,7 +1350,7 @@ int req_stat14(const struct sr_dev_inst *sdi, gboolean power_on)
 
 	/* Write message and wait for reply */
 	devc->req_sent_at = g_get_monotonic_time();
-	if (serial_write(serial, msg, sizeof(msg)) == -1) {
+	if (serial_write_blocking(serial, msg, sizeof(msg), 0) < (int)sizeof(msg)) {
 		return SR_ERR;
 	}
 
@@ -1500,8 +1500,8 @@ SR_PRIV const char *gmc_model_str(enum model mcode)
 
 /** @copydoc sr_dev_driver.config_set
  */
-SR_PRIV int config_set(int key, GVariant *data, const struct sr_dev_inst *sdi,
-		       const struct sr_channel_group *cg)
+SR_PRIV int config_set(uint32_t key, GVariant *data, const struct sr_dev_inst *sdi,
+		const struct sr_channel_group *cg)
 {
 	struct dev_context *devc;
 	uint8_t params[9];
@@ -1529,7 +1529,7 @@ SR_PRIV int config_set(int key, GVariant *data, const struct sr_dev_inst *sdi,
 		params[0] = 5;
 		params[1] = 5;
 		create_cmd_14(devc->addr, 6, params, msg);
-		if (serial_write(sdi->conn, msg, sizeof(msg)) == -1)
+		if (serial_write_blocking(sdi->conn, msg, sizeof(msg), 0) < 0)
 			return SR_ERR;
 		else
 			g_usleep(2000000); /* Wait to ensure transfer before interface switched off. */

@@ -201,6 +201,26 @@ enum sr_mq {
 	SR_MQ_WIND_SPEED,
 	/** Pressure */
 	SR_MQ_PRESSURE,
+	/** Parallel inductance (LCR meter model). */
+	SR_MQ_PARALLEL_INDUCTANCE,
+	/** Parallel capacitance (LCR meter model). */
+	SR_MQ_PARALLEL_CAPACITANCE,
+	/** Parallel resistance (LCR meter model). */
+	SR_MQ_PARALLEL_RESISTANCE,
+	/** Series inductance (LCR meter model). */
+	SR_MQ_SERIES_INDUCTANCE,
+	/** Series capacitance (LCR meter model). */
+	SR_MQ_SERIES_CAPACITANCE,
+	/** Series resistance (LCR meter model). */
+	SR_MQ_SERIES_RESISTANCE,
+	/** Dissipation factor. */
+	SR_MQ_DISSIPATION_FACTOR,
+	/** Quality factor. */
+	SR_MQ_QUALITY_FACTOR,
+	/** Phase angle. */
+	SR_MQ_PHASE_ANGLE,
+	/** Difference from reference value. */
+	SR_MQ_DIFFERENCE,
 };
 
 /** Unit of measured quantity, sr_datafeed_analog.unit. */
@@ -264,6 +284,10 @@ enum sr_unit {
 	SR_UNIT_HECTOPASCAL,
 	/** Relative humidity assuming air temperature of 293 kelvin (%rF). */
 	SR_UNIT_HUMIDITY_293K,
+	/** Plane angle in 1/360th of a full circle. */
+	SR_UNIT_DEGREE,
+	/** Henry (inductance). */
+	SR_UNIT_HENRY,
 };
 
 /** Values for sr_datafeed_analog.flags. */
@@ -314,6 +338,8 @@ enum sr_mqflag {
 	SR_MQFLAG_DURATION = 0x20000,
 	/** Device is in "avg" mode, averaging upon each new value. */
 	SR_MQFLAG_AVG = 0x40000,
+	/** Reference value shown. */
+	SR_MQFLAG_REFERENCE = 0x80000,
 };
 
 enum sr_trigger_matches {
@@ -469,6 +495,8 @@ struct sr_channel {
 	gboolean enabled;
 	/** Name of channel. */
 	char *name;
+	/** Private data for driver use. */
+	void *priv;
 };
 
 /** Structure for groups of channels that have common properties. */
@@ -484,7 +512,7 @@ struct sr_channel_group {
 /** Used for setting or getting value of a config item. */
 struct sr_config {
 	/** Config key like SR_CONF_CONN, etc. */
-	int key;
+	uint32_t key;
 	/** Key-specific data. */
 	GVariant *data;
 };
@@ -492,7 +520,7 @@ struct sr_config {
 /** Information about a config key. */
 struct sr_config_info {
 	/** Config key like SR_CONF_CONN, etc. */
-	int key;
+	uint32_t key;
 	/** Data type like SR_T_STRING, etc. */
 	int datatype;
 	/** Id string, e.g. "serialcomm". */
@@ -502,6 +530,11 @@ struct sr_config_info {
 	/** Verbose description (unused currently). */
 	char *description;
 };
+
+#define SR_CONF_GET  (1 << 31)
+#define SR_CONF_SET  (1 << 30)
+#define SR_CONF_LIST (1 << 29)
+#define SR_CONF_MASK 0x1fffffff
 
 /** Constants for device classes */
 enum sr_configkey {
@@ -536,6 +569,9 @@ enum sr_configkey {
 
 	/** Programmable power supply. */
 	SR_CONF_POWER_SUPPLY,
+
+	/** LCR meter. */
+	SR_CONF_LCRMETER,
 
 	/*--- Driver scan options -------------------------------------------*/
 
@@ -661,35 +697,128 @@ enum sr_configkey {
 	/** The device supports setting the number of analog channels. */
 	SR_CONF_NUM_ANALOG_CHANNELS,
 
-	/** Output voltage. */
+	/**
+	 * Output voltage.
+	 * @arg type: double
+	 * @arg get: get measured output voltage
+	 */
 	SR_CONF_OUTPUT_VOLTAGE,
 
-	/** Maximum output voltage. */
-	SR_CONF_OUTPUT_VOLTAGE_MAX,
+	/**
+	 * Maximum output voltage target.
+	 * @arg type: double
+	 * @arg get: get output voltage target
+	 * @arg set: change output voltage target
+	 */
+	SR_CONF_OUTPUT_VOLTAGE_TARGET,
 
-	/** Output current. */
+	/**
+	 * Output current.
+	 * @arg type: double
+	 * @arg get: get measured output current
+	 */
 	SR_CONF_OUTPUT_CURRENT,
 
-	/** Maximum output current. */
-	SR_CONF_OUTPUT_CURRENT_MAX,
+	/**
+	 * Output current limit.
+	 * @arg type: double
+	 * @arg get: get output current limit
+	 * @arg set: change output current limit
+	 */
+	SR_CONF_OUTPUT_CURRENT_LIMIT,
 
-	/** Enabling/disabling output. */
+	/**
+	 * Enabling/disabling output.
+	 * @arg type: boolean
+	 * @arg get: @b true if currently enabled
+	 * @arg set: enable/disable
+	 */
 	SR_CONF_OUTPUT_ENABLED,
 
-	/** Channel output configuration. */
-	SR_CONF_OUTPUT_CHANNEL,
+	/**
+	 * Output channel configuration.
+	 * @arg type: string
+	 * @arg get: get current setting
+	 * @arg set: change current setting
+	 * @arg list: array of possible values
+	 */
+	SR_CONF_OUTPUT_CHANNEL_CONFIG,
 
-	/** Over-voltage protection (OVP) */
-	SR_CONF_OVER_VOLTAGE_PROTECTION,
+	/**
+	 * Over-voltage protection (OVP) feature
+	 * @arg type: boolean
+	 * @arg get: @b true if currently enabled
+	 * @arg set: enable/disable
+	 */
+	SR_CONF_OVER_VOLTAGE_PROTECTION_ENABLED,
 
-	/** Over-current protection (OCP) */
-	SR_CONF_OVER_CURRENT_PROTECTION,
+	/**
+	 * Over-voltage protection (OVP) active
+	 * @arg type: boolean
+	 * @arg get: @b true if device has activated OVP, i.e. the output voltage
+	 *      exceeds the over-voltage protection threshold.
+	 */
+	SR_CONF_OVER_VOLTAGE_PROTECTION_ACTIVE,
+
+	/**
+	 * Over-voltage protection (OVP) threshold
+	 * @arg type: double (voltage)
+	 * @arg get: get current threshold
+	 * @arg set: set new threshold
+	 */
+	SR_CONF_OVER_VOLTAGE_PROTECTION_THRESHOLD,
+
+	/**
+	 * Over-current protection (OCP) feature
+	 * @arg type: boolean
+	 * @arg get: @b true if currently enabled
+	 * @arg set: enable/disable
+	 */
+	SR_CONF_OVER_CURRENT_PROTECTION_ENABLED,
+
+	/**
+	 * Over-current protection (OCP) active
+	 * @arg type: boolean
+	 * @arg get: @b true if device has activated OCP, i.e. the output current
+	 *      exceeds the over-current protection threshold.
+	 */
+	SR_CONF_OVER_CURRENT_PROTECTION_ACTIVE,
+
+	/**
+	 * Over-current protection (OCP) threshold
+	 * @arg type: double (current)
+	 * @arg get: get current threshold
+	 * @arg set: set new threshold
+	 */
+	SR_CONF_OVER_CURRENT_PROTECTION_THRESHOLD,
 
 	/** Choice of clock edge for external clock ("r" or "f"). */
 	SR_CONF_CLOCK_EDGE,
 
 	/** Amplitude of a source without strictly-defined MQ. */
 	SR_CONF_AMPLITUDE,
+
+	/**
+	 * Output channel regulation
+	 * get: "CV", "CC" or "UR", denoting constant voltage, constant current
+	 *      or unregulated.
+	 */
+	SR_CONF_OUTPUT_REGULATION,
+
+	/** Over-temperature protection (OTP) */
+	SR_CONF_OVER_TEMPERATURE_PROTECTION,
+
+	/** Output frequency in Hz. */
+	SR_CONF_OUTPUT_FREQUENCY,
+
+	/** Measured quantity. */
+	SR_CONF_MEASURED_QUANTITY,
+
+	/** Measured secondary quantity. */
+	SR_CONF_MEASURED_2ND_QUANTITY,
+
+	/** Equivalent circuit model. */
+	SR_CONF_EQUIV_CIRCUIT_MODEL,
 
 	/*--- Special stuff -------------------------------------------------*/
 
@@ -768,8 +897,6 @@ enum sr_configkey {
 struct sr_dev_inst {
 	/** Device driver. */
 	struct sr_dev_driver *driver;
-	/** Index of device in driver. */
-	int index;
 	/** Device instance status. SR_ST_NOT_FOUND, etc. */
 	int status;
 	/** Device instance type. SR_INST_USB, etc. */
@@ -780,6 +907,10 @@ struct sr_dev_inst {
 	char *model;
 	/** Device version. */
 	char *version;
+	/** Serial number. */
+	char *serial_num;
+	/** Connection string to uniquely identify devices. */
+	char *connection_id;
 	/** List of channels. */
 	GSList *channels;
 	/** List of sr_channel_group structs */
@@ -828,7 +959,7 @@ struct sr_dev_driver {
 	/** Called when driver is loaded, e.g. program startup. */
 	int (*init) (struct sr_context *sr_ctx);
 	/** Called before driver is unloaded.
-	 *  Driver must free all resouces held by it. */
+	 *  Driver must free all resources held by it. */
 	int (*cleanup) (void);
 	/** Scan for devices. Driver should do all initialisation required.
 	 *  Can be called several times, e.g. with different port options.
@@ -847,12 +978,12 @@ struct sr_dev_driver {
 	/** Query value of a configuration key in driver or given device instance.
 	 *  @see sr_config_get().
 	 */
-	int (*config_get) (int id, GVariant **data,
+	int (*config_get) (uint32_t key, GVariant **data,
 			const struct sr_dev_inst *sdi,
 			const struct sr_channel_group *cg);
 	/** Set value of a configuration key in driver or a given device instance.
 	 *  @see sr_config_set(). */
-	int (*config_set) (int id, GVariant *data,
+	int (*config_set) (uint32_t key, GVariant *data,
 			const struct sr_dev_inst *sdi,
 			const struct sr_channel_group *cg);
 	/** Channel status change.
@@ -865,7 +996,7 @@ struct sr_dev_driver {
 	/** List all possible values for a configuration key in a device instance.
 	 *  @see sr_config_list().
 	 */
-	int (*config_list) (int info_id, GVariant **data,
+	int (*config_list) (uint32_t key, GVariant **data,
 			const struct sr_dev_inst *sdi,
 			const struct sr_channel_group *cg);
 

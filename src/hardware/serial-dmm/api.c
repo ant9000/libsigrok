@@ -29,16 +29,16 @@
 #include "libsigrok-internal.h"
 #include "protocol.h"
 
-static const int32_t hwopts[] = {
+static const uint32_t scanopts[] = {
 	SR_CONF_CONN,
 	SR_CONF_SERIALCOMM,
 };
 
-static const int32_t hwcaps[] = {
+static const uint32_t devopts[] = {
 	SR_CONF_MULTIMETER,
-	SR_CONF_LIMIT_SAMPLES,
-	SR_CONF_LIMIT_MSEC,
 	SR_CONF_CONTINUOUS,
+	SR_CONF_LIMIT_SAMPLES | SR_CONF_SET,
+	SR_CONF_LIMIT_MSEC | SR_CONF_SET,
 };
 
 SR_PRIV struct sr_dev_driver bbcgm_m2110_driver_info;
@@ -64,6 +64,9 @@ SR_PRIV struct sr_dev_driver voltcraft_me42_driver_info;
 SR_PRIV struct sr_dev_driver voltcraft_vc820_ser_driver_info;
 SR_PRIV struct sr_dev_driver voltcraft_vc830_ser_driver_info;
 SR_PRIV struct sr_dev_driver voltcraft_vc840_ser_driver_info;
+SR_PRIV struct sr_dev_driver voltcraft_vc920_ser_driver_info;
+SR_PRIV struct sr_dev_driver voltcraft_vc940_ser_driver_info;
+SR_PRIV struct sr_dev_driver voltcraft_vc960_ser_driver_info;
 SR_PRIV struct sr_dev_driver uni_t_ut60a_ser_driver_info;
 SR_PRIV struct sr_dev_driver uni_t_ut60e_ser_driver_info;
 SR_PRIV struct sr_dev_driver uni_t_ut60g_ser_driver_info;
@@ -71,6 +74,11 @@ SR_PRIV struct sr_dev_driver uni_t_ut61b_ser_driver_info;
 SR_PRIV struct sr_dev_driver uni_t_ut61c_ser_driver_info;
 SR_PRIV struct sr_dev_driver uni_t_ut61d_ser_driver_info;
 SR_PRIV struct sr_dev_driver uni_t_ut61e_ser_driver_info;
+SR_PRIV struct sr_dev_driver uni_t_ut71a_ser_driver_info;
+SR_PRIV struct sr_dev_driver uni_t_ut71b_ser_driver_info;
+SR_PRIV struct sr_dev_driver uni_t_ut71c_ser_driver_info;
+SR_PRIV struct sr_dev_driver uni_t_ut71d_ser_driver_info;
+SR_PRIV struct sr_dev_driver uni_t_ut71e_ser_driver_info;
 SR_PRIV struct sr_dev_driver iso_tech_idm103n_driver_info;
 SR_PRIV struct sr_dev_driver tenma_72_7745_ser_driver_info;
 SR_PRIV struct sr_dev_driver tenma_72_7750_ser_driver_info;
@@ -248,6 +256,27 @@ SR_PRIV struct dmm_info dmms[] = {
 		receive_data_VOLTCRAFT_VC840_SER,
 	},
 	{
+		"Voltcraft", "VC-920 (UT-D02 cable)", "2400/7o1/rts=0/dtr=1",
+		2400, UT71X_PACKET_SIZE, 0, 0, NULL,
+		sr_ut71x_packet_valid, sr_ut71x_parse, NULL,
+		&voltcraft_vc920_ser_driver_info,
+		receive_data_VOLTCRAFT_VC920_SER,
+	},
+	{
+		"Voltcraft", "VC-940 (UT-D02 cable)", "2400/7o1/rts=0/dtr=1",
+		2400, UT71X_PACKET_SIZE, 0, 0, NULL,
+		sr_ut71x_packet_valid, sr_ut71x_parse, NULL,
+		&voltcraft_vc940_ser_driver_info,
+		receive_data_VOLTCRAFT_VC940_SER,
+	},
+	{
+		"Voltcraft", "VC-960 (UT-D02 cable)", "2400/7o1/rts=0/dtr=1",
+		2400, UT71X_PACKET_SIZE, 0, 0, NULL,
+		sr_ut71x_packet_valid, sr_ut71x_parse, NULL,
+		&voltcraft_vc960_ser_driver_info,
+		receive_data_VOLTCRAFT_VC960_SER,
+	},
+	{
 		"UNI-T", "UT60A (UT-D02 cable)", "2400/8n1/rts=0/dtr=1",
 		2400, FS9721_PACKET_SIZE, 0, 0, NULL,
 		sr_fs9721_packet_valid, sr_fs9721_parse,
@@ -296,6 +325,36 @@ SR_PRIV struct dmm_info dmms[] = {
 		sr_es519xx_19200_14b_packet_valid, sr_es519xx_19200_14b_parse,
 		NULL,
 		&uni_t_ut61e_ser_driver_info, receive_data_UNI_T_UT61E_SER,
+	},
+	{
+		"UNI-T", "UT71A (UT-D02 cable)", "2400/7o1/rts=0/dtr=1",
+		2400, UT71X_PACKET_SIZE, 0, 0, NULL,
+		sr_ut71x_packet_valid, sr_ut71x_parse, NULL,
+		&uni_t_ut71a_ser_driver_info, receive_data_UNI_T_UT71A_SER,
+	},
+	{
+		"UNI-T", "UT71B (UT-D02 cable)", "2400/7o1/rts=0/dtr=1",
+		2400, UT71X_PACKET_SIZE, 0, 0, NULL,
+		sr_ut71x_packet_valid, sr_ut71x_parse, NULL,
+		&uni_t_ut71b_ser_driver_info, receive_data_UNI_T_UT71B_SER,
+	},
+	{
+		"UNI-T", "UT71C (UT-D02 cable)", "2400/7o1/rts=0/dtr=1",
+		2400, UT71X_PACKET_SIZE, 0, 0, NULL,
+		sr_ut71x_packet_valid, sr_ut71x_parse, NULL,
+		&uni_t_ut71c_ser_driver_info, receive_data_UNI_T_UT71C_SER,
+	},
+	{
+		"UNI-T", "UT71D (UT-D02 cable)", "2400/7o1/rts=0/dtr=1",
+		2400, UT71X_PACKET_SIZE, 0, 0, NULL,
+		sr_ut71x_packet_valid, sr_ut71x_parse, NULL,
+		&uni_t_ut71d_ser_driver_info, receive_data_UNI_T_UT71D_SER,
+	},
+	{
+		"UNI-T", "UT71E (UT-D02 cable)", "2400/7o1/rts=0/dtr=1",
+		2400, UT71X_PACKET_SIZE, 0, 0, NULL,
+		sr_ut71x_packet_valid, sr_ut71x_parse, NULL,
+		&uni_t_ut71e_ser_driver_info, receive_data_UNI_T_UT71E_SER,
 	},
 	{
 		"ISO-TECH", "IDM103N", "2400/7o1/rts=0/dtr=1",
@@ -353,7 +412,7 @@ static GSList *sdmm_scan(const char *conn, const char *serialcomm, int dmm)
 	if (!(serial = sr_serial_dev_inst_new(conn, serialcomm)))
 		return NULL;
 
-	if (serial_open(serial, SERIAL_RDWR | SERIAL_NONBLOCK) != SR_OK)
+	if (serial_open(serial, SERIAL_RDWR) != SR_OK)
 		return NULL;
 
 	sr_info("Probing serial port %s.", conn);
@@ -397,7 +456,7 @@ static GSList *sdmm_scan(const char *conn, const char *serialcomm, int dmm)
 
 	sr_info("Found device on port %s.", conn);
 
-	if (!(sdi = sr_dev_inst_new(0, SR_ST_INACTIVE, dmms[dmm].vendor,
+	if (!(sdi = sr_dev_inst_new(SR_ST_INACTIVE, dmms[dmm].vendor,
 				    dmms[dmm].device, NULL)))
 		goto scan_cleanup;
 
@@ -465,7 +524,7 @@ static int cleanup(int dmm)
 	return dev_clear(dmm);
 }
 
-static int config_set(int id, GVariant *data, const struct sr_dev_inst *sdi,
+static int config_set(uint32_t key, GVariant *data, const struct sr_dev_inst *sdi,
 		const struct sr_channel_group *cg)
 {
 	struct dev_context *devc;
@@ -480,7 +539,7 @@ static int config_set(int id, GVariant *data, const struct sr_dev_inst *sdi,
 		return SR_ERR_BUG;
 	}
 
-	switch (id) {
+	switch (key) {
 	case SR_CONF_LIMIT_SAMPLES:
 		devc->limit_samples = g_variant_get_uint64(data);
 		sr_dbg("Setting sample limit to %" PRIu64 ".",
@@ -498,7 +557,7 @@ static int config_set(int id, GVariant *data, const struct sr_dev_inst *sdi,
 	return SR_OK;
 }
 
-static int config_list(int key, GVariant **data, const struct sr_dev_inst *sdi,
+static int config_list(uint32_t key, GVariant **data, const struct sr_dev_inst *sdi,
 		const struct sr_channel_group *cg)
 {
 	(void)sdi;
@@ -506,12 +565,12 @@ static int config_list(int key, GVariant **data, const struct sr_dev_inst *sdi,
 
 	switch (key) {
 	case SR_CONF_SCAN_OPTIONS:
-		*data = g_variant_new_fixed_array(G_VARIANT_TYPE_INT32,
-				hwopts, ARRAY_SIZE(hwopts), sizeof(int32_t));
+		*data = g_variant_new_fixed_array(G_VARIANT_TYPE_UINT32,
+				scanopts, ARRAY_SIZE(scanopts), sizeof(uint32_t));
 		break;
 	case SR_CONF_DEVICE_OPTIONS:
-		*data = g_variant_new_fixed_array(G_VARIANT_TYPE_INT32,
-				hwcaps, ARRAY_SIZE(hwcaps), sizeof(int32_t));
+		*data = g_variant_new_fixed_array(G_VARIANT_TYPE_UINT32,
+				devopts, ARRAY_SIZE(devopts), sizeof(uint32_t));
 		break;
 	default:
 		return SR_ERR_NA;
@@ -626,6 +685,9 @@ DRV(voltcraft_me42, VOLTCRAFT_ME42, "voltcraft-me42", "Voltcraft ME-42")
 DRV(voltcraft_vc820_ser, VOLTCRAFT_VC820_SER, "voltcraft-vc820-ser", "Voltcraft VC-820 (UT-D02 cable)")
 DRV(voltcraft_vc830_ser, VOLTCRAFT_VC830_SER, "voltcraft-vc830-ser", "Voltcraft VC-830 (UT-D02 cable)")
 DRV(voltcraft_vc840_ser, VOLTCRAFT_VC840_SER, "voltcraft-vc840-ser", "Voltcraft VC-840 (UT-D02 cable)")
+DRV(voltcraft_vc920_ser, VOLTCRAFT_VC920_SER, "voltcraft-vc920-ser", "Voltcraft VC-920 (UT-D02 cable)")
+DRV(voltcraft_vc940_ser, VOLTCRAFT_VC940_SER, "voltcraft-vc940-ser", "Voltcraft VC-940 (UT-D02 cable)")
+DRV(voltcraft_vc960_ser, VOLTCRAFT_VC960_SER, "voltcraft-vc960-ser", "Voltcraft VC-960 (UT-D02 cable)")
 DRV(uni_t_ut60a_ser, UNI_T_UT60A_SER, "uni-t-ut60a-ser", "UNI-T UT60A (UT-D02 cable)")
 DRV(uni_t_ut60e_ser, UNI_T_UT60E_SER, "uni-t-ut60e-ser", "UNI-T UT60E (UT-D02 cable)")
 DRV(uni_t_ut60g_ser, UNI_T_UT60G_SER, "uni-t-ut60g-ser", "UNI-T UT60G (UT-D02 cable)")
@@ -633,6 +695,11 @@ DRV(uni_t_ut61b_ser, UNI_T_UT61B_SER, "uni-t-ut61b-ser", "UNI-T UT61B (UT-D02 ca
 DRV(uni_t_ut61c_ser, UNI_T_UT61C_SER, "uni-t-ut61c-ser", "UNI-T UT61C (UT-D02 cable)")
 DRV(uni_t_ut61d_ser, UNI_T_UT61D_SER, "uni-t-ut61d-ser", "UNI-T UT61D (UT-D02 cable)")
 DRV(uni_t_ut61e_ser, UNI_T_UT61E_SER, "uni-t-ut61e-ser", "UNI-T UT61E (UT-D02 cable)")
+DRV(uni_t_ut71a_ser, UNI_T_UT71A_SER, "uni-t-ut71a-ser", "UNI-T UT71A (UT-D02 cable)")
+DRV(uni_t_ut71b_ser, UNI_T_UT71B_SER, "uni-t-ut71b-ser", "UNI-T UT71B (UT-D02 cable)")
+DRV(uni_t_ut71c_ser, UNI_T_UT71C_SER, "uni-t-ut71c-ser", "UNI-T UT71C (UT-D02 cable)")
+DRV(uni_t_ut71d_ser, UNI_T_UT71D_SER, "uni-t-ut71d-ser", "UNI-T UT71D (UT-D02 cable)")
+DRV(uni_t_ut71e_ser, UNI_T_UT71E_SER, "uni-t-ut71e-ser", "UNI-T UT71E (UT-D02 cable)")
 DRV(iso_tech_idm103n, ISO_TECH_IDM103N, "iso-tech-idm103n", "ISO-TECH IDM103N")
 DRV(tenma_72_7745_ser, TENMA_72_7745_SER, "tenma-72-7745-ser", "Tenma 72-7745 (UT-D02 cable)")
 DRV(tenma_72_7750_ser, TENMA_72_7750_SER, "tenma-72-7750-ser", "Tenma 72-7750 (UT-D02 cable)")

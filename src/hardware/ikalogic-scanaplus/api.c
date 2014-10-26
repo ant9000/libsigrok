@@ -28,12 +28,11 @@
 
 #define SAMPLE_BUF_SIZE			(8 * 1024 * 1024)
 
-static const int32_t hwcaps[] = {
+static const uint32_t devopts[] = {
 	SR_CONF_LOGIC_ANALYZER,
-	SR_CONF_SAMPLERATE,
-	SR_CONF_LIMIT_MSEC,
-	SR_CONF_LIMIT_SAMPLES,
-	SR_CONF_CONTINUOUS, // TODO?
+	SR_CONF_LIMIT_SAMPLES | SR_CONF_SET,
+	SR_CONF_LIMIT_MSEC | SR_CONF_SET,
+	SR_CONF_SAMPLERATE | SR_CONF_GET | SR_CONF_SET | SR_CONF_LIST,
 };
 
 /* Channels are numbered 1-9. */
@@ -124,7 +123,7 @@ static GSList *scan(GSList *options)
 	}
 
 	/* Register the device with libsigrok. */
-	sdi = sr_dev_inst_new(0, SR_ST_INITIALIZING,
+	sdi = sr_dev_inst_new(SR_ST_INITIALIZING,
 			USB_VENDOR_NAME, USB_MODEL_NAME, NULL);
 	if (!sdi) {
 		sr_err("Failed to create device instance.");
@@ -280,13 +279,13 @@ static int cleanup(void)
 	return dev_clear();
 }
 
-static int config_get(int id, GVariant **data, const struct sr_dev_inst *sdi,
+static int config_get(uint32_t key, GVariant **data, const struct sr_dev_inst *sdi,
 		const struct sr_channel_group *cg)
 {
 	(void)sdi;
 	(void)cg;
 
-	switch (id) {
+	switch (key) {
 	case SR_CONF_SAMPLERATE:
 		/* The ScanaPLUS samplerate is 100MHz and can't be changed. */
 		*data = g_variant_new_uint64(SR_MHZ(100));
@@ -298,7 +297,7 @@ static int config_get(int id, GVariant **data, const struct sr_dev_inst *sdi,
 	return SR_OK;
 }
 
-static int config_set(int id, GVariant *data, const struct sr_dev_inst *sdi,
+static int config_set(uint32_t key, GVariant *data, const struct sr_dev_inst *sdi,
 		const struct sr_channel_group *cg)
 {
 	struct dev_context *devc;
@@ -310,7 +309,7 @@ static int config_set(int id, GVariant *data, const struct sr_dev_inst *sdi,
 
 	devc = sdi->priv;
 
-	switch (id) {
+	switch (key) {
 	case SR_CONF_SAMPLERATE:
 		if (g_variant_get_uint64(data) != SR_MHZ(100)) {
 			sr_err("ScanaPLUS only supports samplerate = 100MHz.");
@@ -335,7 +334,7 @@ static int config_set(int id, GVariant *data, const struct sr_dev_inst *sdi,
 	return SR_OK;
 }
 
-static int config_list(int key, GVariant **data, const struct sr_dev_inst *sdi,
+static int config_list(uint32_t key, GVariant **data, const struct sr_dev_inst *sdi,
 		const struct sr_channel_group *cg)
 {
 	GVariant *gvar;
@@ -346,8 +345,8 @@ static int config_list(int key, GVariant **data, const struct sr_dev_inst *sdi,
 
 	switch (key) {
 	case SR_CONF_DEVICE_OPTIONS:
-		*data = g_variant_new_fixed_array(G_VARIANT_TYPE_INT32,
-				hwcaps, ARRAY_SIZE(hwcaps), sizeof(int32_t));
+		*data = g_variant_new_fixed_array(G_VARIANT_TYPE_UINT32,
+				devopts, ARRAY_SIZE(devopts), sizeof(uint32_t));
 		break;
 	case SR_CONF_SAMPLERATE:
 		g_variant_builder_init(&gvb, G_VARIANT_TYPE("a{sv}"));

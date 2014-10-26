@@ -21,16 +21,16 @@
 
 #include "protocol.h"
 
-static const int32_t hwcaps[] = {
+static const uint32_t devopts[] = {
 	SR_CONF_OSCILLOSCOPE,
 	SR_CONF_LOGIC_ANALYZER,
-	SR_CONF_SAMPLERATE,
-	SR_CONF_TRIGGER_TYPE,
-	SR_CONF_TRIGGER_SLOPE,
-	SR_CONF_HORIZ_TRIGGERPOS,
-//      SR_CONF_CAPTURE_RATIO,
-	SR_CONF_LIMIT_SAMPLES,
-//      SR_CONF_RLE,
+	SR_CONF_LIMIT_SAMPLES | SR_CONF_SET,
+	SR_CONF_SAMPLERATE | SR_CONF_GET | SR_CONF_SET | SR_CONF_LIST,
+	SR_CONF_TRIGGER_TYPE | SR_CONF_LIST,
+	SR_CONF_TRIGGER_SLOPE | SR_CONF_SET,
+	SR_CONF_HORIZ_TRIGGERPOS | SR_CONF_SET,
+	SR_CONF_CAPTURE_RATIO | SR_CONF_SET,
+	SR_CONF_RLE | SR_CONF_SET,
 };
 
 /*
@@ -203,7 +203,7 @@ static GSList *scan(GSList *options)
 			return devices;
 		}
 
-		struct sr_dev_inst *sdi = sr_dev_inst_new(0, SR_ST_INACTIVE,
+		struct sr_dev_inst *sdi = sr_dev_inst_new(SR_ST_INACTIVE,
 						manufacturer, product, hwrev);
 
 		if (!sdi) {
@@ -380,8 +380,8 @@ static int config_list(int key, GVariant **data, const struct sr_dev_inst *sdi,
 
 	switch (key) {
 	case SR_CONF_DEVICE_OPTIONS:
-		*data = g_variant_new_fixed_array(G_VARIANT_TYPE_INT32,
-				hwcaps, ARRAY_SIZE(hwcaps), sizeof(int32_t));
+		*data = g_variant_new_fixed_array(G_VARIANT_TYPE_UINT32,
+				devopts, ARRAY_SIZE(devopts), sizeof(uint32_t));
 		break;
 	case SR_CONF_SAMPLERATE:
 		g_variant_builder_init(&gvb, G_VARIANT_TYPE("a{sv}"));

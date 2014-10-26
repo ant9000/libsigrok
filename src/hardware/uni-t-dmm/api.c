@@ -26,15 +26,15 @@
 
 #define UNI_T_UT_D04_NEW "1a86.e008"
 
-static const int32_t hwopts[] = {
+static const uint32_t scanopts[] = {
 	SR_CONF_CONN,
 };
 
-static const int32_t hwcaps[] = {
+static const uint32_t devopts[] = {
 	SR_CONF_MULTIMETER,
-	SR_CONF_LIMIT_SAMPLES,
-	SR_CONF_LIMIT_MSEC,
 	SR_CONF_CONTINUOUS,
+	SR_CONF_LIMIT_SAMPLES | SR_CONF_SET,
+	SR_CONF_LIMIT_MSEC | SR_CONF_SET,
 };
 
 SR_PRIV struct sr_dev_driver tecpel_dmm_8061_driver_info;
@@ -45,9 +45,17 @@ SR_PRIV struct sr_dev_driver uni_t_ut61b_driver_info;
 SR_PRIV struct sr_dev_driver uni_t_ut61c_driver_info;
 SR_PRIV struct sr_dev_driver uni_t_ut61d_driver_info;
 SR_PRIV struct sr_dev_driver uni_t_ut61e_driver_info;
+SR_PRIV struct sr_dev_driver uni_t_ut71a_driver_info;
+SR_PRIV struct sr_dev_driver uni_t_ut71b_driver_info;
+SR_PRIV struct sr_dev_driver uni_t_ut71c_driver_info;
+SR_PRIV struct sr_dev_driver uni_t_ut71d_driver_info;
+SR_PRIV struct sr_dev_driver uni_t_ut71e_driver_info;
 SR_PRIV struct sr_dev_driver voltcraft_vc820_driver_info;
 SR_PRIV struct sr_dev_driver voltcraft_vc830_driver_info;
 SR_PRIV struct sr_dev_driver voltcraft_vc840_driver_info;
+SR_PRIV struct sr_dev_driver voltcraft_vc920_driver_info;
+SR_PRIV struct sr_dev_driver voltcraft_vc940_driver_info;
+SR_PRIV struct sr_dev_driver voltcraft_vc960_driver_info;
 SR_PRIV struct sr_dev_driver tenma_72_7745_driver_info;
 SR_PRIV struct sr_dev_driver tenma_72_7750_driver_info;
 
@@ -111,6 +119,31 @@ SR_PRIV struct dmm_info udmms[] = {
 		&uni_t_ut61e_driver_info, receive_data_UNI_T_UT61E,
 	},
 	{
+		"UNI-T", "UT71A", 2400, UT71X_PACKET_SIZE,
+		sr_ut71x_packet_valid, sr_ut71x_parse, NULL,
+		&uni_t_ut71a_driver_info, receive_data_UNI_T_UT71A,
+	},
+	{
+		"UNI-T", "UT71B", 2400, UT71X_PACKET_SIZE,
+		sr_ut71x_packet_valid, sr_ut71x_parse, NULL,
+		&uni_t_ut71b_driver_info, receive_data_UNI_T_UT71B,
+	},
+	{
+		"UNI-T", "UT71C", 2400, UT71X_PACKET_SIZE,
+		sr_ut71x_packet_valid, sr_ut71x_parse, NULL,
+		&uni_t_ut71c_driver_info, receive_data_UNI_T_UT71C,
+	},
+	{
+		"UNI-T", "UT71D", 2400, UT71X_PACKET_SIZE,
+		sr_ut71x_packet_valid, sr_ut71x_parse, NULL,
+		&uni_t_ut71d_driver_info, receive_data_UNI_T_UT71D,
+	},
+	{
+		"UNI-T", "UT71E", 2400, UT71X_PACKET_SIZE,
+		sr_ut71x_packet_valid, sr_ut71x_parse, NULL,
+		&uni_t_ut71e_driver_info, receive_data_UNI_T_UT71E,
+	},
+	{
 		"Voltcraft", "VC-820", 2400,
 		FS9721_PACKET_SIZE,
 		sr_fs9721_packet_valid, sr_fs9721_parse,
@@ -135,6 +168,21 @@ SR_PRIV struct dmm_info udmms[] = {
 		sr_fs9721_packet_valid, sr_fs9721_parse,
 		sr_fs9721_00_temp_c,
 		&voltcraft_vc840_driver_info, receive_data_VOLTCRAFT_VC840,
+	},
+	{
+		"Voltcraft", "VC-920", 2400, UT71X_PACKET_SIZE,
+		sr_ut71x_packet_valid, sr_ut71x_parse, NULL,
+		&voltcraft_vc920_driver_info, receive_data_VOLTCRAFT_VC920,
+	},
+	{
+		"Voltcraft", "VC-940", 2400, UT71X_PACKET_SIZE,
+		sr_ut71x_packet_valid, sr_ut71x_parse, NULL,
+		&voltcraft_vc940_driver_info, receive_data_VOLTCRAFT_VC940,
+	},
+	{
+		"Voltcraft", "VC-960", 2400, UT71X_PACKET_SIZE,
+		sr_ut71x_packet_valid, sr_ut71x_parse, NULL,
+		&voltcraft_vc960_driver_info, receive_data_VOLTCRAFT_VC960,
 	},
 	{
 		"Tenma", "72-7745", 2400,
@@ -212,7 +260,7 @@ static GSList *scan(GSList *options, int dmm)
 
 		devc->first_run = TRUE;
 
-		if (!(sdi = sr_dev_inst_new(0, SR_ST_INACTIVE,
+		if (!(sdi = sr_dev_inst_new(SR_ST_INACTIVE,
 				udmms[dmm].vendor, udmms[dmm].device, NULL))) {
 			sr_err("sr_dev_inst_new returned NULL.");
 			return NULL;
@@ -267,7 +315,7 @@ static int cleanup(int dmm)
 	return dev_clear(dmm);
 }
 
-static int config_set(int id, GVariant *data, const struct sr_dev_inst *sdi,
+static int config_set(uint32_t key, GVariant *data, const struct sr_dev_inst *sdi,
 		const struct sr_channel_group *cg)
 {
 	struct dev_context *devc;
@@ -276,7 +324,7 @@ static int config_set(int id, GVariant *data, const struct sr_dev_inst *sdi,
 
 	devc = sdi->priv;
 
-	switch (id) {
+	switch (key) {
 	case SR_CONF_LIMIT_MSEC:
 		if (g_variant_get_uint64(data) == 0) {
 			sr_err("Time limit cannot be 0.");
@@ -302,7 +350,7 @@ static int config_set(int id, GVariant *data, const struct sr_dev_inst *sdi,
 	return SR_OK;
 }
 
-static int config_list(int key, GVariant **data, const struct sr_dev_inst *sdi,
+static int config_list(uint32_t key, GVariant **data, const struct sr_dev_inst *sdi,
 		const struct sr_channel_group *cg)
 {
 	(void)sdi;
@@ -310,12 +358,12 @@ static int config_list(int key, GVariant **data, const struct sr_dev_inst *sdi,
 
 	switch (key) {
 	case SR_CONF_SCAN_OPTIONS:
-		*data = g_variant_new_fixed_array(G_VARIANT_TYPE_INT32,
-				hwopts, ARRAY_SIZE(hwopts), sizeof(int32_t));
+		*data = g_variant_new_fixed_array(G_VARIANT_TYPE_UINT32,
+				scanopts, ARRAY_SIZE(scanopts), sizeof(uint32_t));
 		break;
 	case SR_CONF_DEVICE_OPTIONS:
-		*data = g_variant_new_fixed_array(G_VARIANT_TYPE_INT32,
-				hwcaps, ARRAY_SIZE(hwcaps), sizeof(int32_t));
+		*data = g_variant_new_fixed_array(G_VARIANT_TYPE_UINT32,
+				devopts, ARRAY_SIZE(devopts), sizeof(uint32_t));
 		break;
 	default:
 		return SR_ERR_NA;
@@ -415,8 +463,16 @@ DRV(uni_t_ut61b, UNI_T_UT61B, "uni-t-ut61b", "UNI-T UT61B")
 DRV(uni_t_ut61c, UNI_T_UT61C, "uni-t-ut61c", "UNI-T UT61C")
 DRV(uni_t_ut61d, UNI_T_UT61D, "uni-t-ut61d", "UNI-T UT61D")
 DRV(uni_t_ut61e, UNI_T_UT61E, "uni-t-ut61e", "UNI-T UT61E")
+DRV(uni_t_ut71a, UNI_T_UT71A, "uni-t-ut71a", "UNI-T UT71A")
+DRV(uni_t_ut71b, UNI_T_UT71B, "uni-t-ut71b", "UNI-T UT71B")
+DRV(uni_t_ut71c, UNI_T_UT71C, "uni-t-ut71c", "UNI-T UT71C")
+DRV(uni_t_ut71d, UNI_T_UT71D, "uni-t-ut71d", "UNI-T UT71D")
+DRV(uni_t_ut71e, UNI_T_UT71E, "uni-t-ut71e", "UNI-T UT71E")
 DRV(voltcraft_vc820, VOLTCRAFT_VC820, "voltcraft-vc820", "Voltcraft VC-820")
 DRV(voltcraft_vc830, VOLTCRAFT_VC830, "voltcraft-vc830", "Voltcraft VC-830")
 DRV(voltcraft_vc840, VOLTCRAFT_VC840, "voltcraft-vc840", "Voltcraft VC-840")
+DRV(voltcraft_vc920, VOLTCRAFT_VC920, "voltcraft-vc920", "Voltcraft VC-920")
+DRV(voltcraft_vc940, VOLTCRAFT_VC940, "voltcraft-vc940", "Voltcraft VC-940")
+DRV(voltcraft_vc960, VOLTCRAFT_VC960, "voltcraft-vc960", "Voltcraft VC-960")
 DRV(tenma_72_7745, TENMA_72_7745, "tenma-72-7745", "Tenma 72-7745")
 DRV(tenma_72_7750, TENMA_72_7750, "tenma-72-7750", "Tenma 72-7750")

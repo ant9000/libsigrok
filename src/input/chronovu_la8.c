@@ -62,7 +62,7 @@ static int init(struct sr_input *in, GHashTable *options)
 		return SR_ERR_ARG;
 	}
 
-	in->sdi = sr_dev_inst_new(0, SR_ST_ACTIVE, NULL, NULL, NULL);
+	in->sdi = sr_dev_inst_new(SR_ST_ACTIVE, NULL, NULL, NULL);
 	in->priv = inc = g_malloc0(sizeof(struct context));
 
 	inc->samplerate = g_variant_get_uint64(g_hash_table_lookup(options, "samplerate"));
@@ -76,7 +76,7 @@ static int init(struct sr_input *in, GHashTable *options)
 	return SR_OK;
 }
 
-static int receive(const struct sr_input *in, GString *buf)
+static int process_buffer(struct sr_input *in)
 {
 	struct sr_datafeed_packet packet;
 	struct sr_datafeed_meta meta;
@@ -84,60 +84,77 @@ static int receive(const struct sr_input *in, GString *buf)
 	struct sr_config *src;
 	struct context *inc;
 	gsize chunk_size, i;
-	int chunk, num_channels;
+	int chunk;
 
 	inc = in->priv;
+	if (!inc->started) {
+		std_session_send_df_header(in->sdi, LOG_PREFIX);
 
-	g_string_append_len(in->buf, buf->str, buf->len);
+		if (inc->samplerate) {
+			packet.type = SR_DF_META;
+			packet.payload = &meta;
+			src = sr_config_new(SR_CONF_SAMPLERATE, g_variant_new_uint64(inc->samplerate));
+			meta.config = g_slist_append(NULL, src);
+			sr_session_send(in->sdi, &packet);
+			sr_config_free(src);
+		}
 
-	num_channels = g_slist_length(in->sdi->channels);
-
-	std_session_send_df_header(in->sdi, LOG_PREFIX);
-	inc->started = TRUE;
-
-	packet.type = SR_DF_META;
-	packet.payload = &meta;
-	src = sr_config_new(SR_CONF_SAMPLERATE, g_variant_new_uint64(inc->samplerate));
-	meta.config = g_slist_append(NULL, src);
-	sr_session_send(in->sdi, &packet);
-	sr_config_free(src);
+		inc->started = TRUE;
+	}
 
 	packet.type = SR_DF_LOGIC;
 	packet.payload = &logic;
-	logic.unitsize = (num_channels + 7) / 8;
-	logic.data = in->buf->str;
+	logic.unitsize = (g_slist_length(in->sdi->channels) + 7) / 8;
 
 	/* Cut off at multiple of unitsize. */
 	chunk_size = in->buf->len / logic.unitsize * logic.unitsize;
 
-	chunk = 0;
 	for (i = 0; i < chunk_size; i += chunk) {
-		chunk = MAX(MAX_CHUNK_SIZE, chunk_size - i);
+		logic.data = in->buf->str + i;
+		chunk = MIN(MAX_CHUNK_SIZE, chunk_size - i);
 		logic.length = chunk;
 		sr_session_send(in->sdi, &packet);
 	}
-
-	if (in->buf->len > chunk_size)
-		g_string_erase(in->buf, 0, in->buf->len - chunk_size);
+	g_string_erase(in->buf, 0, chunk_size);
 
 	return SR_OK;
 }
 
-static int cleanup(struct sr_input *in)
+static int receive(struct sr_input *in, GString *buf)
 {
-	struct sr_datafeed_packet packet;
+	int ret;
+
+	g_string_append_len(in->buf, buf->str, buf->len);
+
+	if (!in->sdi_ready) {
+		/* sdi is ready, notify frontend. */
+		in->sdi_ready = TRUE;
+		return SR_OK;
+	}
+
+	ret = process_buffer(in);
+
+	return ret;
+}
+
+static int end(struct sr_input *in)
+{
 	struct context *inc;
+	struct sr_datafeed_packet packet;
+	int ret;
+
+	if (in->sdi_ready)
+		ret = process_buffer(in);
+	else
+		ret = SR_OK;
 
 	inc = in->priv;
-
 	if (inc->started) {
 		packet.type = SR_DF_END;
 		sr_session_send(in->sdi, &packet);
 	}
-	g_free(in->priv);
-	in->priv = NULL;
 
-	return SR_OK;
+	return ret;
 }
 
 static struct sr_option options[] = {
@@ -165,5 +182,5 @@ SR_PRIV struct sr_input_module input_chronovu_la8 = {
 	.format_match = format_match,
 	.init = init,
 	.receive = receive,
-	.cleanup = cleanup,
+	.end = end,
 };

@@ -148,8 +148,10 @@ SR_PRIV GSList *sr_scpi_scan(struct drv_context *drvc, GSList *options,
 		for (l = resources; l; l = l->next) {
 			res = g_strsplit(l->data, ":", 2);
 			if (res[0] && (sdi = sr_scpi_scan_resource(drvc, res[0],
-			               serialcomm ? serialcomm : res[1], probe_device)))
+			               serialcomm ? serialcomm : res[1], probe_device))) {
 				devices = g_slist_append(devices, sdi);
+				sdi->connection_id = g_strdup(l->data);
+			}
 			g_strfreev(res);
 		}
 		g_slist_free_full(resources, g_free);
@@ -157,7 +159,8 @@ SR_PRIV GSList *sr_scpi_scan(struct drv_context *drvc, GSList *options,
 
 	if (!devices && resource) {
 		sdi = sr_scpi_scan_resource(drvc, resource, serialcomm, probe_device);
-		devices = g_slist_append(NULL, sdi);
+		if (sdi)
+			devices = g_slist_append(NULL, sdi);
 	}
 
 	/* Tack a copy of the newly found devices onto the driver list. */
@@ -182,6 +185,7 @@ SR_PRIV struct sr_scpi_dev_inst *scpi_dev_inst_new(struct drv_context *drvc,
 			scpi = g_malloc(sizeof(*scpi));
 			*scpi = *scpi_dev;
 			scpi->priv = g_malloc0(scpi->priv_size);
+			scpi->read_timeout_ms = 1000;
 			params = g_strsplit(resource, "/", 0);
 			if (scpi->dev_inst_new(scpi->priv, drvc, resource,
 			                       params, serialcomm) != SR_OK) {
@@ -379,6 +383,8 @@ SR_PRIV int sr_scpi_get_string(struct sr_scpi_dev_inst *scpi,
 	char buf[256];
 	int len;
 	GString *response;
+	gint64 start;
+	unsigned int elapsed_ms;
 
 	if (command)
 		if (sr_scpi_send(scpi, command) != SR_OK)
@@ -386,6 +392,8 @@ SR_PRIV int sr_scpi_get_string(struct sr_scpi_dev_inst *scpi,
 
 	if (sr_scpi_read_begin(scpi) != SR_OK)
 		return SR_ERR;
+
+	start = g_get_monotonic_time();
 
 	response = g_string_new("");
 
@@ -398,10 +406,21 @@ SR_PRIV int sr_scpi_get_string(struct sr_scpi_dev_inst *scpi,
 			return SR_ERR;
 		}
 		g_string_append_len(response, buf, len);
+		elapsed_ms = (g_get_monotonic_time() - start) / 1000;
+		if (elapsed_ms >= scpi->read_timeout_ms)
+		{
+			sr_err("Timed out waiting for SCPI response.");
+			g_string_free(response, TRUE);
+			return SR_ERR;
+		}
 	}
 
 	/* Get rid of trailing linefeed if present */
 	if (response->len >= 1 && response->str[response->len - 1] == '\n')
+		g_string_truncate(response, response->len - 1);
+
+	/* Get rid of trailing carriage return if present */
+	if (response->len >= 1 && response->str[response->len - 1] == '\r')
 		g_string_truncate(response, response->len - 1);
 
 	*scpi_response = response->str;

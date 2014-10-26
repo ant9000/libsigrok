@@ -26,15 +26,16 @@
 SR_PRIV struct sr_dev_driver lascar_el_usb_driver_info;
 static struct sr_dev_driver *di = &lascar_el_usb_driver_info;
 
-static const int32_t hwopts[] = {
+static const uint32_t scanopts[] = {
 	SR_CONF_CONN,
 };
 
-static const int32_t hwcaps[] = {
+static const uint32_t devopts[] = {
 	SR_CONF_THERMOMETER,
 	SR_CONF_HYGROMETER,
-	SR_CONF_DATALOG,
-	SR_CONF_LIMIT_SAMPLES,
+	SR_CONF_CONN | SR_CONF_GET,
+	SR_CONF_LIMIT_SAMPLES | SR_CONF_GET | SR_CONF_SET,
+	SR_CONF_DATALOG | SR_CONF_GET | SR_CONF_SET,
 };
 
 static int init(struct sr_context *sr_ctx)
@@ -158,7 +159,7 @@ static int cleanup(void)
 	return ret;
 }
 
-static int config_get(int id, GVariant **data, const struct sr_dev_inst *sdi,
+static int config_get(uint32_t key, GVariant **data, const struct sr_dev_inst *sdi,
 		const struct sr_channel_group *cg)
 {
 	struct dev_context *devc;
@@ -169,7 +170,7 @@ static int config_get(int id, GVariant **data, const struct sr_dev_inst *sdi,
 	(void)cg;
 
 	devc = sdi->priv;
-	switch (id) {
+	switch (key) {
 	case SR_CONF_CONN:
 		if (!sdi || !sdi->conn)
 			return SR_ERR_ARG;
@@ -194,7 +195,7 @@ static int config_get(int id, GVariant **data, const struct sr_dev_inst *sdi,
 	return SR_OK;
 }
 
-static int config_set(int id, GVariant *data, const struct sr_dev_inst *sdi,
+static int config_set(uint32_t key, GVariant *data, const struct sr_dev_inst *sdi,
 		const struct sr_channel_group *cg)
 {
 	struct dev_context *devc;
@@ -212,7 +213,7 @@ static int config_set(int id, GVariant *data, const struct sr_dev_inst *sdi,
 
 	devc = sdi->priv;
 	ret = SR_OK;
-	switch (id) {
+	switch (key) {
 	case SR_CONF_DATALOG:
 		if (g_variant_get_boolean(data)) {
 			/* Start logging. */
@@ -234,7 +235,7 @@ static int config_set(int id, GVariant *data, const struct sr_dev_inst *sdi,
 	return ret;
 }
 
-static int config_list(int key, GVariant **data, const struct sr_dev_inst *sdi,
+static int config_list(uint32_t key, GVariant **data, const struct sr_dev_inst *sdi,
 		const struct sr_channel_group *cg)
 {
 	(void)sdi;
@@ -242,12 +243,12 @@ static int config_list(int key, GVariant **data, const struct sr_dev_inst *sdi,
 
 	switch (key) {
 	case SR_CONF_SCAN_OPTIONS:
-		*data = g_variant_new_fixed_array(G_VARIANT_TYPE_INT32,
-				hwopts, ARRAY_SIZE(hwopts), sizeof(int32_t));
+		*data = g_variant_new_fixed_array(G_VARIANT_TYPE_UINT32,
+				scanopts, ARRAY_SIZE(scanopts), sizeof(uint32_t));
 		break;
 	case SR_CONF_DEVICE_OPTIONS:
-		*data = g_variant_new_fixed_array(G_VARIANT_TYPE_INT32,
-				hwcaps, ARRAY_SIZE(hwcaps), sizeof(int32_t));
+		*data = g_variant_new_fixed_array(G_VARIANT_TYPE_UINT32,
+				devopts, ARRAY_SIZE(devopts), sizeof(uint32_t));
 		break;
 	default:
 		return SR_ERR_NA;

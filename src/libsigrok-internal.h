@@ -79,7 +79,7 @@
  * @return the corresponding signed integer
  */
 #define RL16S(x)  ((int16_t) \
-		          (((unsigned)((const uint8_t*)(x))[1] <<  8) | \
+                  (((unsigned)((const uint8_t*)(x))[1] <<  8) | \
                     (unsigned)((const uint8_t*)(x))[0]))
 
 /**
@@ -211,6 +211,7 @@ struct sr_input {
 	const struct sr_input_module *module;
 	GString *buf;
 	struct sr_dev_inst *sdi;
+	gboolean sdi_ready;
 	void *priv;
 };
 
@@ -264,7 +265,7 @@ struct sr_input_module {
 	 * @param[in] metadata Metadata the module can use to identify the stream.
 	 *
 	 * @retval SR_OK This module knows the format.
-	 * @retval SR_OK_CONTINUE There wasn't enough data for this module to
+	 * @retval SR_ERR_NA There wasn't enough data for this module to
 	 *   positively identify the format.
 	 * @retval SR_ERR_DATA This module knows the format, but cannot handle it.
 	 *   This means the stream is either corrupt, or indicates a feature
@@ -276,47 +277,47 @@ struct sr_input_module {
 	/**
 	 * Initialize the input module.
 	 *
-	 * @param in A pointer to a valid 'struct sr_input' that the caller
-	 *           has to allocate and provide to this function. It is also
-	 *           the responsibility of the caller to free it later.
-	 * @param[in] filename The name (and path) of the file to use.
-	 *
 	 * @retval SR_OK Success
 	 * @retval other Negative error code.
 	 */
 	int (*init) (struct sr_input *in, GHashTable *options);
 
 	/**
-	 * Load a file, parsing the input according to the file's format.
+	 * Send data to the specified input instance.
 	 *
-	 * This function will send datafeed packets to the session bus, so
-	 * the calling frontend must have registered its session callbacks
-	 * beforehand.
+	 * When an input module instance is created with sr_input_new(), this
+	 * function is used to feed data to the instance.
 	 *
-	 * The packet types sent across the session bus by this function must
-	 * include at least SR_DF_HEADER, SR_DF_END, and an appropriate data
-	 * type such as SR_DF_LOGIC. It may also send a SR_DF_TRIGGER packet
-	 * if appropriate.
-	 *
-	 * @param in A pointer to a valid 'struct sr_input' that the caller
-	 *           has to allocate and provide to this function. It is also
-	 *           the responsibility of the caller to free it later.
-	 * @param f The name (and path) of the file to use.
+	 * As enough data gets fed into this function to completely populate
+	 * the device instance associated with this input instance, this is
+	 * guaranteed to return the moment it's ready. This gives the caller
+	 * the chance to examine the device instance, attach session callbacks
+	 * and so on.
 	 *
 	 * @retval SR_OK Success
 	 * @retval other Negative error code.
 	 */
-	int (*receive) (const struct sr_input *in, GString *buf);
+	int (*receive) (struct sr_input *in, GString *buf);
+
+	/**
+	 * Signal the input module no more data will come.
+	 *
+	 * This will cause the module to process any data it may have buffered.
+	 * The SR_DF_END packet will also typically be sent at this time.
+	 */
+	int (*end) (struct sr_input *in);
 
 	/**
 	 * This function is called after the caller is finished using
 	 * the input module, and can be used to free any internal
 	 * resources the module may keep.
 	 *
+	 * This function is optional.
+	 *
 	 * @retval SR_OK Success
 	 * @retval other Negative error code.
 	 */
-	int (*cleanup) (struct sr_input *in);
+	void (*cleanup) (struct sr_input *in);
 };
 
 /** Output module instance. */
@@ -438,8 +439,6 @@ struct sr_serial_dev_inst {
 	char *port;
 	/** Comm params for serial_set_paramstr(). */
 	char *serialcomm;
-	/** Port is non-blocking. */
-	int nonblocking;
 	/** libserialport port handle */
 	struct sp_port *data;
 	/** libserialport event set */
@@ -492,7 +491,7 @@ SR_PRIV struct sr_channel *sr_channel_new(int index, int type,
 		gboolean enabled, const char *name);
 
 /* Generic device instances */
-SR_PRIV struct sr_dev_inst *sr_dev_inst_new(int index, int status,
+SR_PRIV struct sr_dev_inst *sr_dev_inst_new(int status,
 		const char *vendor, const char *model, const char *version);
 SR_PRIV void sr_dev_inst_free(struct sr_dev_inst *sdi);
 
@@ -516,8 +515,10 @@ SR_PRIV void sr_usbtmc_dev_inst_free(struct sr_usbtmc_dev_inst *usbtmc);
 
 /*--- hwdriver.c ------------------------------------------------------------*/
 
+SR_PRIV const GVariantType *sr_variant_type_get(int datatype);
+SR_PRIV int sr_variant_type_check(uint32_t key, GVariant *data);
 SR_PRIV void sr_hw_cleanup_all(void);
-SR_PRIV struct sr_config *sr_config_new(int key, GVariant *data);
+SR_PRIV struct sr_config *sr_config_new(uint32_t key, GVariant *data);
 SR_PRIV void sr_config_free(struct sr_config *src);
 SR_PRIV int sr_source_remove(int fd);
 SR_PRIV int sr_source_remove_pollfd(GPollFD *pollfd);
@@ -532,8 +533,10 @@ SR_PRIV int sr_source_add_channel(GIOChannel *channel, int events, int timeout,
 /*--- session.c -------------------------------------------------------------*/
 
 struct sr_session {
-	/** List of struct sr_dev pointers. */
+	/** List of struct sr_dev_inst pointers. */
 	GSList *devs;
+	/** List of struct sr_dev_inst pointers owned by this session. */
+	GSList *owned_devs;
 	/** List of struct datafeed_callback pointers. */
 	GSList *datafeed_callbacks;
 	struct sr_trigger *trigger;
@@ -567,6 +570,9 @@ SR_PRIV int sr_session_send(const struct sr_dev_inst *sdi,
 		const struct sr_datafeed_packet *packet);
 SR_PRIV int sr_session_stop_sync(struct sr_session *session);
 SR_PRIV int sr_sessionfile_check(const char *filename);
+SR_PRIV int sr_packet_copy(const struct sr_datafeed_packet *packet,
+		struct sr_datafeed_packet **copy);
+SR_PRIV void sr_packet_free(struct sr_datafeed_packet *packet);
 
 /*--- std.c -----------------------------------------------------------------*/
 
@@ -612,13 +618,12 @@ SR_PRIV void soft_trigger_logic_free(struct soft_trigger_logic *st);
 SR_PRIV int soft_trigger_logic_check(struct soft_trigger_logic *st, uint8_t *buf,
 		int len);
 
-/*--- hardware/common/serial.c ----------------------------------------------*/
+/*--- hardware/serial.c -----------------------------------------------------*/
 
 #ifdef HAVE_LIBSERIALPORT
 enum {
 	SERIAL_RDWR = 1,
 	SERIAL_RDONLY = 2,
-	SERIAL_NONBLOCK = 4,
 };
 
 typedef gboolean (*packet_valid_callback)(const uint8_t *buf);
@@ -626,16 +631,12 @@ typedef gboolean (*packet_valid_callback)(const uint8_t *buf);
 SR_PRIV int serial_open(struct sr_serial_dev_inst *serial, int flags);
 SR_PRIV int serial_close(struct sr_serial_dev_inst *serial);
 SR_PRIV int serial_flush(struct sr_serial_dev_inst *serial);
-SR_PRIV int serial_write(struct sr_serial_dev_inst *serial,
-		const void *buf, size_t count);
 SR_PRIV int serial_write_blocking(struct sr_serial_dev_inst *serial,
-		const void *buf, size_t count);
+		const void *buf, size_t count, unsigned int timeout_ms);
 SR_PRIV int serial_write_nonblocking(struct sr_serial_dev_inst *serial,
 		const void *buf, size_t count);
-SR_PRIV int serial_read(struct sr_serial_dev_inst *serial, void *buf,
-		size_t count);
 SR_PRIV int serial_read_blocking(struct sr_serial_dev_inst *serial, void *buf,
-		size_t count);
+		size_t count, unsigned int timeout_ms);
 SR_PRIV int serial_read_nonblocking(struct sr_serial_dev_inst *serial, void *buf,
 		size_t count);
 SR_PRIV int serial_set_params(struct sr_serial_dev_inst *serial, int baudrate,
@@ -657,9 +658,10 @@ SR_PRIV int serial_source_add(struct sr_session *session,
 SR_PRIV int serial_source_remove(struct sr_session *session,
 		struct sr_serial_dev_inst *serial);
 SR_PRIV GSList *sr_serial_find_usb(uint16_t vendor_id, uint16_t product_id);
+SR_PRIV int serial_timeout(struct sr_serial_dev_inst *port, int num_bytes);
 #endif
 
-/*--- hardware/common/ezusb.c -----------------------------------------------*/
+/*--- hardware/ezusb.c ------------------------------------------------------*/
 
 #ifdef HAVE_LIBUSB_1_0
 SR_PRIV int ezusb_reset(struct libusb_device_handle *hdl, int set_clear);
@@ -669,7 +671,7 @@ SR_PRIV int ezusb_upload_firmware(libusb_device *dev, int configuration,
 				  const char *filename);
 #endif
 
-/*--- hardware/common/usb.c -------------------------------------------------*/
+/*--- hardware/usb.c --------------------------------------------------------*/
 
 #ifdef HAVE_LIBUSB_1_0
 SR_PRIV GSList *sr_usb_find(libusb_context *usb_ctx, const char *conn);
@@ -677,9 +679,10 @@ SR_PRIV int sr_usb_open(libusb_context *usb_ctx, struct sr_usb_dev_inst *usb);
 SR_PRIV int usb_source_add(struct sr_session *session, struct sr_context *ctx,
 		int timeout, sr_receive_data_callback cb, void *cb_data);
 SR_PRIV int usb_source_remove(struct sr_session *session, struct sr_context *ctx);
+SR_PRIV int usb_get_port_path(libusb_device *dev, char *path, int path_len);
 #endif
 
-/*--- hardware/common/scpi.c ------------------------------------------------*/
+/*--- hardware/scpi.c -------------------------------------------------------*/
 
 #define SCPI_CMD_IDN "*IDN?"
 #define SCPI_CMD_OPC "*OPC?"
@@ -734,6 +737,7 @@ struct sr_scpi_dev_inst {
 	int (*read_complete)(void *priv);
 	int (*close)(void *priv);
 	void (*free)(void *priv);
+	unsigned int read_timeout_ms;
 	void *priv;
 };
 
@@ -776,7 +780,7 @@ SR_PRIV int sr_scpi_get_hw_id(struct sr_scpi_dev_inst *scpi,
 			struct sr_scpi_hw_info **scpi_response);
 SR_PRIV void sr_scpi_hw_info_free(struct sr_scpi_hw_info *hw_info);
 
-/*--- hardware/common/dmm/es519xx.c -----------------------------------------*/
+/*--- hardware/dmm/es519xx.c ------------------------------------------------*/
 
 /**
  * All 11-byte es519xx chips repeat each block twice for each conversion cycle
@@ -821,7 +825,7 @@ SR_PRIV gboolean sr_es519xx_19200_14b_sel_lpf_packet_valid(const uint8_t *buf);
 SR_PRIV int sr_es519xx_19200_14b_sel_lpf_parse(const uint8_t *buf,
 		float *floatval, struct sr_datafeed_analog *analog, void *info);
 
-/*--- hardware/common/dmm/fs9922.c ------------------------------------------*/
+/*--- hardware/dmm/fs9922.c -------------------------------------------------*/
 
 #define FS9922_PACKET_SIZE 14
 
@@ -839,7 +843,7 @@ SR_PRIV int sr_fs9922_parse(const uint8_t *buf, float *floatval,
 			    struct sr_datafeed_analog *analog, void *info);
 SR_PRIV void sr_fs9922_z1_diode(struct sr_datafeed_analog *analog, void *info);
 
-/*--- hardware/common/dmm/fs9721.c ------------------------------------------*/
+/*--- hardware/dmm/fs9721.c -------------------------------------------------*/
 
 #define FS9721_PACKET_SIZE 14
 
@@ -859,7 +863,7 @@ SR_PRIV void sr_fs9721_10_temp_c(struct sr_datafeed_analog *analog, void *info);
 SR_PRIV void sr_fs9721_01_10_temp_f_c(struct sr_datafeed_analog *analog, void *info);
 SR_PRIV void sr_fs9721_max_c_min(struct sr_datafeed_analog *analog, void *info);
 
-/*--- hardware/common/dmm/m2110.c -----------------------------------------*/
+/*--- hardware/dmm/m2110.c --------------------------------------------------*/
 
 #define BBCGM_M2110_PACKET_SIZE 9
 
@@ -867,7 +871,7 @@ SR_PRIV gboolean sr_m2110_packet_valid(const uint8_t *buf);
 SR_PRIV int sr_m2110_parse(const uint8_t *buf, float *floatval,
 			     struct sr_datafeed_analog *analog, void *info);
 
-/*--- hardware/common/dmm/metex14.c -----------------------------------------*/
+/*--- hardware/dmm/metex14.c ------------------------------------------------*/
 
 #define METEX14_PACKET_SIZE 14
 
@@ -886,7 +890,7 @@ SR_PRIV gboolean sr_metex14_packet_valid(const uint8_t *buf);
 SR_PRIV int sr_metex14_parse(const uint8_t *buf, float *floatval,
 			     struct sr_datafeed_analog *analog, void *info);
 
-/*--- hardware/common/dmm/rs9lcd.c ------------------------------------------*/
+/*--- hardware/dmm/rs9lcd.c -------------------------------------------------*/
 
 #define RS9LCD_PACKET_SIZE 9
 
@@ -897,7 +901,7 @@ SR_PRIV gboolean sr_rs9lcd_packet_valid(const uint8_t *buf);
 SR_PRIV int sr_rs9lcd_parse(const uint8_t *buf, float *floatval,
 			    struct sr_datafeed_analog *analog, void *info);
 
-/*--- hardware/common/dmm/bm25x.c -----------------------------------------*/
+/*--- hardware/dmm/bm25x.c --------------------------------------------------*/
 
 #define BRYMEN_BM25X_PACKET_SIZE 15
 
@@ -907,5 +911,40 @@ struct bm25x_info { int dummy; };
 SR_PRIV gboolean sr_brymen_bm25x_packet_valid(const uint8_t *buf);
 SR_PRIV int sr_brymen_bm25x_parse(const uint8_t *buf, float *floatval,
 			     struct sr_datafeed_analog *analog, void *info);
+
+/*--- hardware/dmm/ut71x.c --------------------------------------------------*/
+
+#define UT71X_PACKET_SIZE 11
+
+struct ut71x_info {
+	gboolean is_voltage, is_resistance, is_capacitance, is_temperature;
+	gboolean is_celsius, is_fahrenheit, is_current, is_continuity;
+	gboolean is_diode, is_frequency, is_duty_cycle, is_dc, is_ac;
+	gboolean is_auto, is_manual, is_sign, is_power, is_loop_current;
+};
+
+SR_PRIV gboolean sr_ut71x_packet_valid(const uint8_t *buf);
+SR_PRIV int sr_ut71x_parse(const uint8_t *buf, float *floatval,
+		struct sr_datafeed_analog *analog, void *info);
+
+/*--- hardware/lcr/es51919.c ------------------------------------------------*/
+
+SR_PRIV void es51919_serial_clean(void *priv);
+SR_PRIV struct sr_dev_inst *es51919_serial_scan(GSList *options,
+						const char *vendor,
+						const char *model);
+SR_PRIV int es51919_serial_config_get(uint32_t key, GVariant **data,
+				      const struct sr_dev_inst *sdi,
+				      const struct sr_channel_group *cg);
+SR_PRIV int es51919_serial_config_set(uint32_t key, GVariant *data,
+				      const struct sr_dev_inst *sdi,
+				      const struct sr_channel_group *cg);
+SR_PRIV int es51919_serial_config_list(uint32_t key, GVariant **data,
+				       const struct sr_dev_inst *sdi,
+				       const struct sr_channel_group *cg);
+SR_PRIV int es51919_serial_acquisition_start(const struct sr_dev_inst *sdi,
+					     void *cb_data);
+SR_PRIV int es51919_serial_acquisition_stop(struct sr_dev_inst *sdi,
+					    void *cb_data);
 
 #endif

@@ -114,6 +114,7 @@ DRIVER([Center 3xx], [center-3xx])
 DRIVER([ChronoVu LA], [chronovu-la])
 DRIVER([Colead SLM], [colead-slm])
 DRIVER([Conrad DIGI 35 CPU], [conrad-digi-35-cpu])
+DRIVER([DER EE DE-5000], [deree-de5000])
 DRIVER([demo], [demo])
 DRIVER([Fluke DMM], [fluke-dmm])
 DRIVER([fx2lafw], [fx2lafw])
@@ -132,6 +133,7 @@ DRIVER([OpenBench Logic Sniffer], [openbench-logic-sniffer])
 DRIVER([Pipistrello-OLS], [pipistrello-ols])
 DRIVER([Rigol DS], [rigol-ds])
 DRIVER([Saleae Logic16], [saleae-logic16])
+DRIVER([SCPI PPS], [scpi-pps])
 DRIVER([serial DMM], [serial-dmm])
 DRIVER([Sysclk LWLA], [sysclk-lwla])
 DRIVER([Teleinfo], [teleinfo])
@@ -156,7 +158,7 @@ AC_ARG_ENABLE(libusb,
 	AC_HELP_STRING([--disable-libusb],
 	[disable libusb support [default=detect]]))
 
-# Language binding '--enable' options
+# Language binding '--enable' options:
 
 AC_ARG_ENABLE(bindings,
 	AC_HELP_STRING([--enable-bindings],
@@ -192,30 +194,28 @@ if test "x$HAVE_CXX11" != "x1"; then
 	BINDINGS_CXX="no"; cxx_msg="C++11 compiler required"
 fi
 
-# The C++ bindings use doxygen to parse libsigrok symbols.
+# The C++ bindings use Doxygen to parse libsigrok symbols.
 AC_CHECK_PROG([HAVE_DOXYGEN], [doxygen], [yes])
 if test "x$HAVE_DOXYGEN" != "xyes"; then
-	BINDINGS_CXX="no"; cxx_msg="doxygen required"
+	BINDINGS_CXX="no"; cxx_msg="Doxygen required"
 fi
 
 # Python is needed for the C++ bindings.
-AC_CHECK_PROG([HAVE_PYTHON], [python], [yes])
-if test "x$HAVE_PYTHON" != "xyes"; then
-	BINDINGS_CXX="no"; cxx_msg="Python required"
-fi
+AM_PATH_PYTHON([2.7], [HAVE_PYTHON="yes"],
+	[HAVE_PYTHON="no"; BINDINGS_CXX="no"; cxx_msg="Python required"])
 
-# The Python bindings need Python development files
+# The Python bindings need Python development files.
 PKG_CHECK_MODULES([python], [python >= 2.7],
-        [CXXFLAGS="$CXXFLAGS $python_CFLAGS";
-        CXXLIBS="$CXXLIBS $python_LIBS"],
+	[CXXFLAGS="$CXXFLAGS $python_CFLAGS";
+	CXXLIBS="$CXXLIBS $python_LIBS"],
 [PKG_CHECK_MODULES([python27], [python-2.7 >= 2.7],
-        [CXXFLAGS="$CXXFLAGS $python27_CFLAGS";
-        CXXLIBS="$CXXLIBS $python27_LIBS"],
+	[CXXFLAGS="$CXXFLAGS $python27_CFLAGS";
+	CXXLIBS="$CXXLIBS $python27_LIBS"],
 		[BINDINGS_PYTHON="no"; python_msg="Python headers required"])])
 
 # The Python bindings need the setuptools Python module.
 m4_ifdef([AX_PYTHON_MODULE], [AX_PYTHON_MODULE([setuptools])],
-	# We'll let it go through even if the macro wasn't found, the python
+	# We'll let it go through even if the macro wasn't found, the Python
 	# module may still be there.
 	[HAVE_PYTHON_SETUPTOOLS="yes";
 		AC_MSG_NOTICE([Missing macro m4_toupper(aX_PYTHON_MODULE), no setuptools check])]
@@ -224,11 +224,11 @@ if test "x$HAVE_PYMOD_SETUPTOOLS" != "xyes"; then
 	BINDINGS_PYTHON="no"; python_msg="Python setuptools module required"
 fi
 
-# The Python and Java bindings use swig to generate code.
+# The Python and Java bindings use SWIG to generate code.
 AC_CHECK_PROG([HAVE_SWIG], [swig], [yes])
 if test "x$HAVE_SWIG" != "xyes"; then
-	BINDINGS_PYTHON="no"; python_msg="swig required"
-	BINDINGS_JAVA="no"; java_msg="swig required"
+	BINDINGS_PYTHON="no"; python_msg="SWIG required"
+	BINDINGS_JAVA="no"; java_msg="SWIG required"
 fi
 
 # Checks for libraries.
@@ -250,10 +250,10 @@ AC_SEARCH_LIBS([pow], [m])
 # RPC is only needed for VXI support.
 AC_MSG_CHECKING([for RPC support])
 AC_LINK_IFELSE([AC_LANG_PROGRAM([#include <rpc/rpc.h>],
-				[CLIENT *rpc_test(void)],
-				[{ return clnt_create("", 0, 0, ""); }])],
-	       [AC_MSG_RESULT([yes]); have_rpc=1],
-	       [AC_MSG_RESULT([no]);  have_rpc=0])
+			[CLIENT *rpc_test(void)],
+			[{ return clnt_create("", 0, 0, ""); }])],
+		[AC_MSG_RESULT([yes]); have_rpc=1],
+		[AC_MSG_RESULT([no]);  have_rpc=0])
 # Define HAVE_RPC in config.h if we found RPC support.
 AC_DEFINE_UNQUOTED(HAVE_RPC, [$have_rpc], [Specifies whether we have RPC support.])
 # VXI support is only compiled if RPC support was found.
@@ -261,8 +261,8 @@ AM_CONDITIONAL(NEED_RPC, test "x$have_rpc" != "x0")
 
 # libglib-2.0 is always needed. Abort if it's not found.
 # Note: glib-2.0 is part of the libsigrok API (hard pkg-config requirement).
-# We require at least 2.32.0 due to e.g. g_variant_new_fixed_array().
-AM_PATH_GLIB_2_0([2.32.0],
+# We require at least 2.34.0 due to e.g. g_slist_deep_copy().
+AM_PATH_GLIB_2_0([2.34.0],
 	[LIB_CFLAGS="$LIB_CFLAGS $GLIB_CFLAGS"; LIBS="$LIBS $GLIB_LIBS"])
 
 # libzip is always needed. Abort if it's not found.
@@ -279,22 +279,22 @@ if test "x$enable_libserialport" != "xno"; then
 		SR_PKGLIBS="$SR_PKGLIBS libserialport"],
 		[have_libserialport="no"])
 	if test "x$enable_libserialport$have_libserialport" = "xyesno"; then
-		AC_MSG_ERROR([libserialport support requested, but it was not found])
+		AC_MSG_ERROR([libserialport support requested, but it was not found.])
 	fi
 else
 	have_libserialport="no"
 fi
-
-# Define HAVE_LIBSERIALPORT in config.h if we found libserialport.
 if test "x$have_libserialport" = "xno"; then
 	HW_AGILENT_DMM="no"; HW_APPA_55II="no";
 	HW_ATTEN_PPS3XXX="no"; HW_BRYMEN_DMM="no"; HW_CEM_DT_885X="no";
 	HW_CENTER_3XX="no"; HW_COLEAD_SLM="no"; HW_CONRAD_DIGI_35_CPU="no";
-	HW_FLUKE_DMM="no"; HW_GMC_MH_1X_2X="no"; HW_HAMEG_HMO="no";
-	HW_MANSON_HCS_3XXX="no"; HW_MIC_985XX="no"; HW_MOTECH_LPS_30X="no";
-	HW_NORMA_DMM="no"; HW_OPENBENCH_LOGIC_SNIFFER="no"; HW_SERIAL_DMM="no";
+	HW_DEREE_DE5000="no"; HW_FLUKE_DMM="no"; HW_GMC_MH_1X_2X="no";
+	HW_HAMEG_HMO="no"; HW_MANSON_HCS_3XXX="no"; HW_MIC_985XX="no";
+	HW_MOTECH_LPS_30X="no"; HW_NORMA_DMM="no";
+	HW_OPENBENCH_LOGIC_SNIFFER="no"; HW_SERIAL_DMM="no";
 	HW_TELEINFO="no"; HW_TONDAJ_SL_814="no";
 else
+	# Define HAVE_LIBSERIALPORT in config.h if we found libserialport.
 	AC_DEFINE_UNQUOTED(HAVE_LIBSERIALPORT, [1],
 		[Specifies whether we have libserialport.])
 fi
@@ -302,30 +302,28 @@ fi
 # Serial port helper code is only compiled in if libserialport was found.
 AM_CONDITIONAL(NEED_SERIAL, test "x$have_libserialport" != xno)
 
-# VISA SCPI backend is only compiled in if librevisa was found.
+# The VISA SCPI backend is only compiled in if librevisa was found.
 PKG_CHECK_MODULES([librevisa], [librevisa >= 0.0.20130812],
 	[have_librevisa="yes"; LIB_CFLAGS="$LIB_CFLAGS $librevisa_CFLAGS";
 	LIBS="$LIBS $librevisa_LIBS";
 	SR_PKGLIBS="$SR_PKGLIBS librevisa"],
 	[have_librevisa="no"])
 AM_CONDITIONAL(NEED_VISA, test "x$have_librevisa" != xno)
-
-# Define HAVE_LIBREVISA in config.h if we found librevisa.
 if test "x$have_librevisa" != "xno"; then
+	# Define HAVE_LIBREVISA in config.h if we found librevisa.
 	AC_DEFINE_UNQUOTED(HAVE_LIBREVISA, [1],
 		[Specifies whether we have librevisa.])
 fi
 
-# GPIB backend is only compiled in if libgpib headers found.
+# The GPIB SCPI backend is only compiled in if libgpib is found.
 PKG_CHECK_MODULES([libgpib], [libgpib],
 	[have_libgpib="yes"; LIB_CFLAGS="$LIB_CFLAGS $libgpib_CFLAGS";
 	LIBS="$LIBS $libgpib_LIBS";
 	SR_PKGLIBS="$SR_PKGLIBS libgpib"],
 	[have_libgpib="no"])
 AM_CONDITIONAL(NEED_GPIB, test "x$have_libgpib" != xno)
-
-# Define HAVE_LIBGPIB in config.h if we found libgpib.
 if test "x$have_libgpib" != "xno"; then
+	# Define HAVE_LIBGPIB in config.h if we found libgpib.
 	AC_DEFINE_UNQUOTED(HAVE_LIBGPIB, [1],
 		[Specifies whether we have libgpib.])
 fi
@@ -347,15 +345,13 @@ if test "x$enable_libusb" != "xno"; then
 			SR_PKGLIBS="$SR_PKGLIBS libusb-1.0"],
 			[have_libusb1_0="no"])
 		if test "x$enable_libusb$have_libusb1_0" = "xyesno"; then
-			AC_MSG_ERROR([libusb support requested, but it was not found])
+			AC_MSG_ERROR([libusb support requested, but it was not found.])
 		fi
 		;;
 	esac
 else
 	have_libusb1_0="no"
 fi
-
-# Define HAVE_LIBUSB_1_0 in config.h if we found libusb-1.0.
 if test "x$have_libusb1_0" = "xno"; then
 	HW_BRYMEN_BM86X="no"; HW_FX2LAFW="no";
 	HW_HANTEK_DSO="no"; HW_IKALOGIC_SCANALOGIC2="no";
@@ -364,8 +360,9 @@ if test "x$have_libusb1_0" = "xno"; then
 	HW_UNI_T_UT32X="no"; HW_VICTOR_DMM="no";
 	HW_ZEROPLUS_LOGIC_CUBE="no"; HW_SALEAE_LOGIC16="no";
 else
+	# Define HAVE_LIBUSB_1_0 in config.h if we found libusb-1.0.
 	AC_DEFINE_UNQUOTED(HAVE_LIBUSB_1_0, [1],
-		[Specifies whether we have a libusb.h header.])
+		[Specifies whether we have libusb-1.0.])
 fi
 
 # USB + FX2 firmware helper code is only compiled in if libusb-1.0 was found.
@@ -383,12 +380,11 @@ if test "x$enable_libftdi" != "xno"; then
 			SR_PKGLIBS="$SR_PKGLIBS libftdi1"],
 			[have_libftdi="no"])])
 	if test "x$enable_libftdi$have_libftdi" = "xyesno"; then
-		AC_MSG_ERROR([libftdi support requested, but it was not found])
+		AC_MSG_ERROR([libftdi support requested, but it was not found.])
 	fi
 else
 	have_libftdi="no"
 fi
-
 if test "x$have_libftdi" = "xno"; then
 	HW_ASIX_SIGMA="no"; HW_CHRONOVU_LA="no"; HW_IKALOGIC_SCANAPLUS="no";
 	HW_PIPISTRELLO_OLS="no";
@@ -400,41 +396,33 @@ PKG_CHECK_MODULES([glibmm], [glibmm-2.4 >= 2.32.0],
 	CXXLIBS="$CXXLIBS $glibmm_LIBS"],
 	[BINDINGS_CXX="no"; cxx_msg="glibmm required"])
 
-# C++ bindings want stoi and stod
+# C++ bindings want stoi and stod.
 if test "x$BINDINGS_CXX" == "xyes"; then
 	AC_LANG_PUSH([C++])
 	AC_MSG_CHECKING([for stoi and stod])
 	AC_COMPILE_IFELSE([AC_LANG_PROGRAM([#include <string>],
-					   [{ return std::stoi("1")+std::stod("1.0"); }])],
-	       [AC_MSG_RESULT([yes]);
+		[{ return std::stoi("1") + std::stod("1.0"); }])],
+		[AC_MSG_RESULT([yes]);
 		AC_DEFINE_UNQUOTED(HAVE_STOI_STOD, [1],
 		[Specifies whether we have the stoi and stod functions.])],
-	       [AC_MSG_RESULT([no])])
+		[AC_MSG_RESULT([no])])
 	AC_LANG_POP([C++])
 fi
 
 # PyGObject is needed for the Python bindings.
 PKG_CHECK_MODULES([pygobject], [pygobject-3.0 >= 3.0.0],
-        [CXXFLAGS="$CXXFLAGS $pygobject_CFLAGS";
-        CXXLIBS="$CXXLIBS $pygobject_LIBS";
+	[CXXFLAGS="$CXXFLAGS $pygobject_CFLAGS";
+	CXXLIBS="$CXXLIBS $pygobject_LIBS";
 	PKG_CHECK_MODULES([pygobject_3_7_91], [pygobject-3.0 >= 3.7.91],
 		[pyg_flags_signed=0], [pyg_flags_signed=1]);
 	AC_DEFINE_UNQUOTED(PYGOBJECT_FLAGS_SIGNED, [$pyg_flags_signed],
-		[Whether last argument to pyg_flags_get_value() is signed])],
+		[Whether last argument to pyg_flags_get_value() is signed.])],
 	[BINDINGS_PYTHON="no"; python_msg="Python pygobject module required"])
 
 # The Check unit testing framework is optional. Disable if not found.
 PKG_CHECK_MODULES([check], [check >= 0.9.4],
 	[have_check="yes"], [have_check="no"])
 AM_CONDITIONAL(HAVE_CHECK, test x"$have_check" = "xyes")
-
-# The OLS driver uses serial port file descriptors directly, and therefore
-# will not currently work on Windows.
-case "$host" in
-*mingw*)
-	HW_OPENBENCH_LOGIC_SNIFFER="no"
-	;;
-esac
 
 # The BeagleLogic driver needs sys/mman.h and sys/ioctl.h. Don't try to
 # build it if these headers aren't available.
@@ -476,9 +464,7 @@ CFLAGS="$CFLAGS -Iinclude/libsigrok -I${srcdir}/include/libsigrok $LIB_CFLAGS"
 CXXFLAGS="$CXXFLAGS -Iinclude/libsigrok -I${srcdir}/include -Ibindings/cxx -Ibindings/cxx/include/libsigrok -I${srcdir}/bindings/cxx/include $LIB_CFLAGS"
 
 # Find Java compiler and JNI includes for Java bindings.
-
 AC_CHECK_PROG([HAVE_JAVAC], [javac], [yes], [no])
-
 if test "x$HAVE_JAVAC" = "xyes"; then
 	AX_PROG_JAVAC
 	if test "x$JNI_INCLUDE_DIRS" = "xauto"; then
@@ -506,205 +492,53 @@ fi
 
 # Now set AM_CONDITIONALs and AC_DEFINEs for the enabled/disabled drivers.
 
-AM_CONDITIONAL(HW_AGILENT_DMM, test x$HW_AGILENT_DMM = xyes)
-if test "x$HW_AGILENT_DMM" = "xyes"; then
-	AC_DEFINE(HAVE_HW_AGILENT_DMM, 1, [Agilent DMM support])
-fi
+AC_DEFUN([DRIVER2], [
+	AM_CONDITIONAL($1, test "x$2" = "xyes")
+	if test "x$2" = "xyes"; then AC_DEFINE($3, 1, [.]) fi
+])
 
-AM_CONDITIONAL(HW_APPA_55II, test x$HW_APPA_55II = xyes)
-if test "x$HW_APPA_55II" = "xyes"; then
-	AC_DEFINE(HAVE_HW_APPA_55II, 1, [APPA 55II support])
-fi
-
-AM_CONDITIONAL(HW_ASIX_SIGMA, test x$HW_ASIX_SIGMA = xyes)
-if test "x$HW_ASIX_SIGMA" = "xyes"; then
-	AC_DEFINE(HAVE_HW_ASIX_SIGMA, 1, [ASIX SIGMA/SIGMA2 support])
-fi
-
-AM_CONDITIONAL(HW_ATTEN_PPS3XXX, test x$HW_ATTEN_PPS3XXX = xyes)
-if test "x$HW_ATTEN_PPS3XXX" = "xyes"; then
-	AC_DEFINE(HAVE_HW_ATTEN_PPS3XXX, 1, [Atten PPS3xxx support])
-fi
-
-AM_CONDITIONAL(HW_BEAGLELOGIC, test x$HW_BEAGLELOGIC = xyes)
-if test "x$HW_BEAGLELOGIC" = "xyes"; then
-	AC_DEFINE(HAVE_HW_BEAGLELOGIC, 1, [BeagleLogic support])
-fi
-
-AM_CONDITIONAL(HW_BRYMEN_BM86X, test x$HW_BRYMEN_BM86X = xyes)
-if test "x$HW_BRYMEN_BM86X" = "xyes"; then
-	AC_DEFINE(HAVE_HW_BRYMEN_BM86X, 1, [Brymen BM86X support])
-fi
-
-AM_CONDITIONAL(HW_BRYMEN_DMM, test x$HW_BRYMEN_DMM = xyes)
-if test "x$HW_BRYMEN_DMM" = "xyes"; then
-	AC_DEFINE(HAVE_HW_BRYMEN_DMM, 1, [Brymen DMM support])
-fi
-
-AM_CONDITIONAL(HW_CEM_DT_885X, test x$HW_CEM_DT_885X = xyes)
-if test "x$HW_CEM_DT_885X" = "xyes"; then
-	AC_DEFINE(HAVE_HW_CEM_DT_885X, 1, [CEM DT-885x support])
-fi
-
-AM_CONDITIONAL(HW_CENTER_3XX, test x$HW_CENTER_3XX = xyes)
-if test "x$HW_CENTER_3XX" = "xyes"; then
-	AC_DEFINE(HAVE_HW_CENTER_3XX, 1, [Center 3xx support])
-fi
-
-AM_CONDITIONAL(HW_CHRONOVU_LA, test x$HW_CHRONOVU_LA = xyes)
-if test "x$HW_CHRONOVU_LA" = "xyes"; then
-	AC_DEFINE(HAVE_HW_CHRONOVU_LA, 1, [ChronoVu LA support])
-fi
-
-AM_CONDITIONAL(HW_COLEAD_SLM, test x$HW_COLEAD_SLM = xyes)
-if test "x$HW_COLEAD_SLM" = "xyes"; then
-	AC_DEFINE(HAVE_HW_COLEAD_SLM, 1, [Colead SLM support])
-fi
-
-AM_CONDITIONAL(HW_CONRAD_DIGI_35_CPU, test x$HW_CONRAD_DIGI_35_CPU = xyes)
-if test "x$HW_CONRAD_DIGI_35_CPU" = "xyes"; then
-	AC_DEFINE(HAVE_HW_CONRAD_DIGI_35_CPU, 1, [Conrad DIGI 35 CPU support])
-fi
-
-AM_CONDITIONAL(HW_DEMO, test x$HW_DEMO = xyes)
-if test "x$HW_DEMO" = "xyes"; then
-	AC_DEFINE(HAVE_HW_DEMO, 1, [Demo driver support])
-fi
-
-AM_CONDITIONAL(HW_FLUKE_DMM, test x$HW_FLUKE_DMM = xyes)
-if test "x$HW_FLUKE_DMM" = "xyes"; then
-	AC_DEFINE(HAVE_HW_FLUKE_DMM, 1, [Fluke DMM support])
-fi
-
-AM_CONDITIONAL(HW_FX2LAFW, test x$HW_FX2LAFW = xyes)
-if test "x$HW_FX2LAFW" = "xyes"; then
-	AC_DEFINE(HAVE_HW_FX2LAFW, 1, [fx2lafw support])
-fi
-
-AM_CONDITIONAL(HW_GMC_MH_1X_2X, test x$HW_GMC_MH_1X_2X = xyes)
-if test "x$HW_GMC_MH_1X_2X" = "xyes"; then
-	AC_DEFINE(HAVE_HW_GMC_MH_1X_2X, 1, [gmc-mh-1x-2x support])
-fi
-
-AM_CONDITIONAL(HW_HANTEK_DSO, test x$HW_HANTEK_DSO = xyes)
-if test "x$HW_HANTEK_DSO" = "xyes"; then
-	AC_DEFINE(HAVE_HW_HANTEK_DSO, 1, [Hantek DSO support])
-fi
-
-AM_CONDITIONAL(HW_HAMEG_HMO, test x$HW_HAMEG_HMO = xyes)
-if test "x$HW_HAMEG_HMO" = "xyes"; then
-	AC_DEFINE(HAVE_HW_HAMEG_HMO, 1, [Hameg HMO support])
-fi
-
-AM_CONDITIONAL(HW_IKALOGIC_SCANALOGIC2, test x$HW_IKALOGIC_SCANALOGIC2 = xyes)
-if test "x$HW_IKALOGIC_SCANALOGIC2" = "xyes"; then
-	AC_DEFINE(HAVE_HW_IKALOGIC_SCANALOGIC2, 1, [IKALOGIC Scanalogic-2 support])
-fi
-
-AM_CONDITIONAL(HW_IKALOGIC_SCANAPLUS, test x$HW_IKALOGIC_SCANAPLUS = xyes)
-if test "x$HW_IKALOGIC_SCANAPLUS" = "xyes"; then
-	AC_DEFINE(HAVE_HW_IKALOGIC_SCANAPLUS, 1, [IKALOGIC ScanaPLUS support])
-fi
-
-AM_CONDITIONAL(HW_KECHENG_KC_330B, test x$HW_KECHENG_KC_330B = xyes)
-if test "x$HW_KECHENG_KC_330B" = "xyes"; then
-	AC_DEFINE(HAVE_HW_KECHENG_KC_330B, 1, [Kecheng KC-330B support])
-fi
-
-AM_CONDITIONAL(HW_LASCAR_EL_USB, test x$HW_LASCAR_EL_USB = xyes)
-if test "x$HW_LASCAR_EL_USB" = "xyes"; then
-	AC_DEFINE(HAVE_HW_LASCAR_EL_USB, 1, [Lascar EL-USB support])
-fi
-
-AM_CONDITIONAL(HW_MANSON_HCS_3XXX, test x$HW_MANSON_HCS_3XXX = xyes)
-if test "x$HW_MANSON_HCS_3XXX" = "xyes"; then
-	AC_DEFINE(HAVE_HW_MANSON_HCS_3XXX, 1, [Manson HCS-3xxx support])
-fi
-
-AM_CONDITIONAL(HW_MIC_985XX, test x$HW_MIC_985XX = xyes)
-if test "x$HW_MIC_985XX" = "xyes"; then
-	AC_DEFINE(HAVE_HW_MIC_985XX, 1, [MIC 985xx support])
-fi
-
-AM_CONDITIONAL(HW_MOTECH_LPS_30X, test x$HW_MOTECH_LPS_30X = xyes)
-if test "x$HW_MOTECH_LPS_30X" = "xyes"; then
-	AC_DEFINE(HAVE_HW_MOTECH_LPS_30X, 1, [motech-lps-30x support])
-fi
-
-AM_CONDITIONAL(HW_NORMA_DMM, test x$HW_NORMA_DMM = xyes)
-if test "x$HW_NORMA_DMM" = "xyes"; then
-	AC_DEFINE(HAVE_HW_NORMA_DMM, 1, [Norma DMM support])
-fi
-
-AM_CONDITIONAL(HW_OPENBENCH_LOGIC_SNIFFER, test x$HW_OPENBENCH_LOGIC_SNIFFER = xyes)
-if test "x$HW_OPENBENCH_LOGIC_SNIFFER" = "xyes"; then
-	AC_DEFINE(HAVE_HW_OPENBENCH_LOGIC_SNIFFER, 1, [OpenBench Logic Sniffer (OLS) support])
-fi
-
-AM_CONDITIONAL(HW_PIPISTRELLO_OLS, test x$HW_PIPISTRELLO_OLS = xyes)
-if test "x$HW_PIPISTRELLO_OLS" = "xyes"; then
-	AC_DEFINE(HAVE_HW_PIPISTRELLO_OLS, 1, [Pipistrello OLS support])
-fi
-
-AM_CONDITIONAL(HW_RIGOL_DS, test x$HW_RIGOL_DS = xyes)
-if test "x$HW_RIGOL_DS" = "xyes"; then
-	AC_DEFINE(HAVE_HW_RIGOL_DS, 1, [Rigol DS support])
-fi
-
-AM_CONDITIONAL(HW_SALEAE_LOGIC16, test x$HW_SALEAE_LOGIC16 = xyes)
-if test "x$HW_SALEAE_LOGIC16" = "xyes"; then
-	AC_DEFINE(HAVE_HW_SALEAE_LOGIC16, 1, [Saleae Logic16 support])
-fi
-
-AM_CONDITIONAL(HW_SERIAL_DMM, test x$HW_SERIAL_DMM = xyes)
-if test "x$HW_SERIAL_DMM" = "xyes"; then
-	AC_DEFINE(HAVE_HW_SERIAL_DMM, 1, [Serial DMM support])
-fi
-
-AM_CONDITIONAL(HW_SYSCLK_LWLA, test x$HW_SYSCLK_LWLA = xyes)
-if test "x$HW_SYSCLK_LWLA" = "xyes"; then
-	AC_DEFINE(HAVE_HW_SYSCLK_LWLA, 1, [Sysclk LWLA support])
-fi
-
-AM_CONDITIONAL(HW_TELEINFO, test x$HW_TELEINFO = xyes)
-if test "x$HW_TELEINFO" = "xyes"; then
-	AC_DEFINE(HAVE_HW_TELEINFO, 1, [Teleinfo support])
-fi
-
-AM_CONDITIONAL(HW_TESTO, test x$HW_TESTO = xyes)
-if test "x$HW_TESTO" = "xyes"; then
-	AC_DEFINE(HAVE_HW_TESTO, 1, [Testo support])
-fi
-
-AM_CONDITIONAL(HW_TONDAJ_SL_814, test x$HW_TONDAJ_SL_814 = xyes)
-if test "x$HW_TONDAJ_SL_814" = "xyes"; then
-	AC_DEFINE(HAVE_HW_TONDAJ_SL_814, 1, [Tondaj SL-814 support])
-fi
-
-AM_CONDITIONAL(HW_UNI_T_DMM, test x$HW_UNI_T_DMM = xyes)
-if test "x$HW_UNI_T_DMM" = "xyes"; then
-	AC_DEFINE(HAVE_HW_UNI_T_DMM, 1, [UNI-T DMM support])
-fi
-
-AM_CONDITIONAL(HW_UNI_T_UT32X, test x$HW_UNI_T_UT32X = xyes)
-if test "x$HW_UNI_T_UT32X" = "xyes"; then
-	AC_DEFINE(HAVE_HW_UNI_T_UT32X, 1, [UNI-T UT32x support])
-fi
-
-AM_CONDITIONAL(HW_VICTOR_DMM, test x$HW_VICTOR_DMM = xyes)
-if test "x$HW_VICTOR_DMM" = "xyes"; then
-	AC_DEFINE(HAVE_HW_VICTOR_DMM, 1, [Victor DMM support])
-fi
-
-AM_CONDITIONAL(HW_YOKOGAWA_DLM, test x$HW_YOKOGAWA_DLM = xyes)
-if test "x$HW_YOKOGAWA_DLM" = "xyes"; then
-	AC_DEFINE(HAVE_HW_YOKOGAWA_DLM, 1, [Yokogawa DL/DLM support])
-fi
-
-AM_CONDITIONAL(HW_ZEROPLUS_LOGIC_CUBE, test x$HW_ZEROPLUS_LOGIC_CUBE = xyes)
-if test "x$HW_ZEROPLUS_LOGIC_CUBE" = "xyes"; then
-	AC_DEFINE(HAVE_HW_ZEROPLUS_LOGIC_CUBE, 1, [ZEROPLUS Logic Cube support])
-fi
+DRIVER2([HW_AGILENT_DMM], [$HW_AGILENT_DMM], [HAVE_HW_AGILENT_DMM])
+DRIVER2([HW_APPA_55II], [$HW_APPA_55II], [HAVE_HW_APPA_55II])
+DRIVER2([HW_ASIX_SIGMA], [$HW_ASIX_SIGMA], [HAVE_HW_ASIX_SIGMA])
+DRIVER2([HW_ATTEN_PPS3XXX], [$HW_ATTEN_PPS3XXX], [HAVE_HW_ATTEN_PPS3XXX])
+DRIVER2([HW_BEAGLELOGIC], [$HW_BEAGLELOGIC], [HAVE_HW_BEAGLELOGIC])
+DRIVER2([HW_BRYMEN_BM86X], [$HW_BRYMEN_BM86X], [HAVE_HW_BRYMEN_BM86X])
+DRIVER2([HW_BRYMEN_DMM], [$HW_BRYMEN_DMM], [HAVE_HW_BRYMEN_DMM])
+DRIVER2([HW_CEM_DT_885X], [$HW_CEM_DT_885X], [HAVE_HW_CEM_DT_885X])
+DRIVER2([HW_CENTER_3XX], [$HW_CENTER_3XX], [HAVE_HW_CENTER_3XX])
+DRIVER2([HW_CHRONOVU_LA], [$HW_CHRONOVU_LA], [HAVE_HW_CHRONOVU_LA])
+DRIVER2([HW_COLEAD_SLM], [$HW_COLEAD_SLM], [HAVE_HW_COLEAD_SLM])
+DRIVER2([HW_CONRAD_DIGI_35_CPU], [$HW_CONRAD_DIGI_35_CPU], [HAVE_HW_CONRAD_DIGI_35_CPU])
+DRIVER2([HW_DEMO], [$HW_DEMO], [HAVE_HW_DEMO])
+DRIVER2([HW_DEREE_DE5000], [$HW_DEREE_DE5000], [HAVE_HW_DEREE_DE5000])
+DRIVER2([HW_FLUKE_DMM], [$HW_FLUKE_DMM], [HAVE_HW_FLUKE_DMM])
+DRIVER2([HW_FX2LAFW], [$HW_FX2LAFW], [HAVE_HW_FX2LAFW])
+DRIVER2([HW_GMC_MH_1X_2X], [$HW_GMC_MH_1X_2X], [HAVE_HW_GMC_MH_1X_2X])
+DRIVER2([HW_HAMEG_HMO], [$HW_HAMEG_HMO], [HAVE_HW_HAMEG_HMO])
+DRIVER2([HW_HANTEK_DSO], [$HW_HANTEK_DSO], [HAVE_HW_HANTEK_DSO])
+DRIVER2([HW_IKALOGIC_SCANALOGIC2], [$HW_IKALOGIC_SCANALOGIC2], [HAVE_HW_IKALOGIC_SCANALOGIC2])
+DRIVER2([HW_IKALOGIC_SCANAPLUS], [$HW_IKALOGIC_SCANAPLUS], [HAVE_HW_IKALOGIC_SCANAPLUS])
+DRIVER2([HW_KECHENG_KC_330B], [$HW_KECHENG_KC_330B], [HAVE_HW_KECHENG_KC_330B])
+DRIVER2([HW_LASCAR_EL_USB], [$HW_LASCAR_EL_USB], [HAVE_HW_LASCAR_EL_USB])
+DRIVER2([HW_MANSON_HCS_3XXX], [$HW_MANSON_HCS_3XXX], [HAVE_HW_MANSON_HCS_3XXX])
+DRIVER2([HW_MIC_985XX], [$HW_MIC_985XX], [HAVE_HW_MIC_985XX])
+DRIVER2([HW_MOTECH_LPS_30X], [$HW_MOTECH_LPS_30X], [HAVE_HW_MOTECH_LPS_30X])
+DRIVER2([HW_NORMA_DMM], [$HW_NORMA_DMM], [HAVE_HW_NORMA_DMM])
+DRIVER2([HW_OPENBENCH_LOGIC_SNIFFER], [$HW_OPENBENCH_LOGIC_SNIFFER], [HAVE_HW_OPENBENCH_LOGIC_SNIFFER])
+DRIVER2([HW_PIPISTRELLO_OLS], [$HW_PIPISTRELLO_OLS], [HAVE_HW_PIPISTRELLO_OLS])
+DRIVER2([HW_RIGOL_DS], [$HW_RIGOL_DS], [HAVE_HW_RIGOL_DS])
+DRIVER2([HW_SALEAE_LOGIC16], [$HW_SALEAE_LOGIC16], [HAVE_HW_SALEAE_LOGIC16])
+DRIVER2([HW_SCPI_PPS], [$HW_SCPI_PPS], [HAVE_HW_SCPI_PPS])
+DRIVER2([HW_SERIAL_DMM], [$HW_SERIAL_DMM], [HAVE_HW_SERIAL_DMM])
+DRIVER2([HW_SYSCLK_LWLA], [$HW_SYSCLK_LWLA], [HAVE_HW_SYSCLK_LWLA])
+DRIVER2([HW_TELEINFO], [$HW_TELEINFO], [HAVE_HW_TELEINFO])
+DRIVER2([HW_TESTO], [$HW_TESTO], [HAVE_HW_TESTO])
+DRIVER2([HW_TONDAJ_SL_814], [$HW_TONDAJ_SL_814], [HAVE_HW_TONDAJ_SL_814])
+DRIVER2([HW_UNI_T_DMM], [$HW_UNI_T_DMM], [HAVE_HW_UNI_T_DMM])
+DRIVER2([HW_UNI_T_UT32X], [$HW_UNI_T_UT32X], [HAVE_HW_UNI_T_UT32X])
+DRIVER2([HW_VICTOR_DMM], [$HW_VICTOR_DMM], [HAVE_HW_VICTOR_DMM])
+DRIVER2([HW_YOKOGAWA_DLM], [$HW_YOKOGAWA_DLM], [HAVE_HW_YOKOGAWA_DLM])
+DRIVER2([HW_ZEROPLUS_LOGIC_CUBE], [$HW_ZEROPLUS_LOGIC_CUBE], [HAVE_HW_ZEROPLUS_LOGIC_CUBE])
 
 AM_CONDITIONAL(HW_PICOTECH_PS2000A, test x$HW_PICOTECH_PS2000A = xyes)
 if test "x$HW_PICOTECH_PS2000A" = "xyes"; then
@@ -756,13 +590,13 @@ echo "Detected libraries:"
 echo
 
 # Note: This only works for libs with pkg-config integration.
-for lib in "glib-2.0 >= 2.32.0" "libzip >= 0.10" "libserialport >= 0.2.0" \
+for lib in "glib-2.0 >= 2.34.0" "libzip >= 0.10" "libserialport >= 0.2.0" \
 	"librevisa >= 0.0.20130812" "libusb-1.0 >= 1.0.16" "libftdi >= 0.16" \
-	"libftdi1 >= 1.0" "glibmm-2.4 >= 2.32.0" "pygobject-3.0 >= 3.0.0" \
-	"check >= 0.9.4" "libgpib"
+	"libftdi1 >= 1.0" "libgpib" "glibmm-2.4 >= 2.32.0" \
+	"pygobject-3.0 >= 3.0.0" "check >= 0.9.4"
 do
 	optional="OPTIONAL"
-	if test "x$lib" = "xglib-2.0 >= 2.32.0"; then optional="REQUIRED"; fi
+	if test "x$lib" = "xglib-2.0 >= 2.34.0"; then optional="REQUIRED"; fi
 	if test "x$lib" = "xlibzip >= 0.10"; then optional="REQUIRED"; fi
 	if `$PKG_CONFIG --exists $lib`; then
 		ver=`$PKG_CONFIG --modversion $lib`
@@ -775,7 +609,7 @@ done
 
 eval echo -e "@Enabled hardware drivers:@@${driver_summary}" | tr @ \\n
 
-# Prepare final bindings report messages
+# Prepare final bindings report messages.
 final_cxx=""
 final_python=""
 final_java=""
@@ -801,7 +635,20 @@ else
 	fi
 fi
 
-echo -e "Enabled language bindings:\n"
+echo "Enabled SCPI backends:"
+echo " - TCP............................. yes"
+if test "x$have_rpc" = "x0"; then
+echo " - RPC............................. no"
+else
+echo " - RPC............................. yes"
+fi
+echo " - serial.......................... $have_libserialport"
+echo " - VISA............................ $have_librevisa"
+echo " - GPIB............................ $have_libgpib"
+echo " - USBTMC.......................... $have_libusb1_0"
+echo
+
+echo "Enabled language bindings:"
 echo " - C++............................. $BINDINGS_CXX$final_cxx"
 echo " - Python.......................... $BINDINGS_PYTHON$final_python"
 echo " - Java............................ $BINDINGS_JAVA$final_java"

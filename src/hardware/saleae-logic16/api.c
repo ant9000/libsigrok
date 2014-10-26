@@ -41,19 +41,18 @@
 SR_PRIV struct sr_dev_driver saleae_logic16_driver_info;
 static struct sr_dev_driver *di = &saleae_logic16_driver_info;
 
-static const int32_t hwopts[] = {
+static const uint32_t scanopts[] = {
 	SR_CONF_CONN,
 };
 
-static const int32_t hwcaps[] = {
+static const uint32_t devopts[] = {
 	SR_CONF_LOGIC_ANALYZER,
-	SR_CONF_SAMPLERATE,
-	SR_CONF_VOLTAGE_THRESHOLD,
-	SR_CONF_TRIGGER_MATCH,
-
-	/* These are really implemented in the driver, not the hardware. */
-	SR_CONF_LIMIT_SAMPLES,
 	SR_CONF_CONTINUOUS,
+	SR_CONF_LIMIT_SAMPLES | SR_CONF_SET,
+	SR_CONF_CONN | SR_CONF_GET,
+	SR_CONF_SAMPLERATE | SR_CONF_GET | SR_CONF_SET | SR_CONF_LIST,
+	SR_CONF_VOLTAGE_THRESHOLD | SR_CONF_GET | SR_CONF_SET | SR_CONF_LIST,
+	SR_CONF_TRIGGER_MATCH | SR_CONF_LIST,
 };
 
 static const int32_t soft_trigger_matches[] = {
@@ -150,8 +149,9 @@ static GSList *scan(GSList *options)
 	GSList *l, *devices, *conn_devices;
 	struct libusb_device_descriptor des;
 	libusb_device **devlist;
-	int devcnt, ret, i, j;
+	int ret, i, j;
 	const char *conn;
+	char connection_id[64];
 
 	drvc = di->priv;
 
@@ -193,15 +193,17 @@ static GSList *scan(GSList *options)
 			continue;
 		}
 
+		usb_get_port_path(devlist[i], connection_id, sizeof(connection_id));
+
 		if (des.idVendor != LOGIC16_VID || des.idProduct != LOGIC16_PID)
 			continue;
 
-		devcnt = g_slist_length(drvc->instances);
-		sdi = sr_dev_inst_new(devcnt, SR_ST_INITIALIZING,
+		sdi = sr_dev_inst_new(SR_ST_INITIALIZING,
 				      "Saleae", "Logic16", NULL);
 		if (!sdi)
 			return NULL;
 		sdi->driver = di;
+		sdi->connection_id = g_strdup(connection_id);
 
 		for (j = 0; channel_names[j]; j++) {
 			if (!(ch = sr_channel_new(j, SR_CHANNEL_LOGIC, TRUE,
@@ -231,8 +233,7 @@ static GSList *scan(GSList *options)
 				/* Store when this device's FW was updated. */
 				devc->fw_updated = g_get_monotonic_time();
 			else
-				sr_err("Firmware upload failed for "
-				       "device %d.", devcnt);
+				sr_err("Firmware upload failed.");
 			sdi->inst_type = SR_INST_USB;
 			sdi->conn = sr_usb_dev_inst_new(
 				libusb_get_bus_number(devlist[i]), 0xff, NULL);
@@ -255,7 +256,8 @@ static int logic16_dev_open(struct sr_dev_inst *sdi)
 	struct sr_usb_dev_inst *usb;
 	struct libusb_device_descriptor des;
 	struct drv_context *drvc;
-	int ret, skip, i, device_count;
+	int ret, i, device_count;
+	char connection_id[64];
 
 	drvc = di->priv;
 	usb = sdi->conn;
@@ -264,7 +266,6 @@ static int logic16_dev_open(struct sr_dev_inst *sdi)
 		/* Device is already in use. */
 		return SR_ERR;
 
-	skip = 0;
 	device_count = libusb_get_device_list(drvc->sr_ctx->libusb_ctx, &devlist);
 	if (device_count < 0) {
 		sr_err("Failed to get device list: %s.",
@@ -282,19 +283,13 @@ static int logic16_dev_open(struct sr_dev_inst *sdi)
 		if (des.idVendor != LOGIC16_VID || des.idProduct != LOGIC16_PID)
 			continue;
 
-		if (sdi->status == SR_ST_INITIALIZING) {
-			if (skip != sdi->index) {
-				/* Skip devices of this type that aren't the one we want. */
-				skip += 1;
-				continue;
-			}
-		} else if (sdi->status == SR_ST_INACTIVE) {
+		if ((sdi->status == SR_ST_INITIALIZING) ||
+				(sdi->status == SR_ST_INACTIVE)) {
 			/*
-			 * This device is fully enumerated, so we need to find
-			 * this device by vendor, product, bus and address.
+			 * Check device by its physical USB bus/port address.
 			 */
-			if (libusb_get_bus_number(devlist[i]) != usb->bus
-			    || libusb_get_device_address(devlist[i]) != usb->address)
+			usb_get_port_path(devlist[i], connection_id, sizeof(connection_id));
+			if (strcmp(sdi->connection_id, connection_id))
 				/* This is not the one. */
 				continue;
 		}
@@ -332,8 +327,8 @@ static int logic16_dev_open(struct sr_dev_inst *sdi)
 		}
 
 		sdi->status = SR_ST_ACTIVE;
-		sr_info("Opened device %d on %d.%d, interface %d.",
-			sdi->index, usb->bus, usb->address, USB_INTERFACE);
+		sr_info("Opened device on %d.%d (logical) / %s (physical), interface %d.",
+			usb->bus, usb->address, sdi->connection_id, USB_INTERFACE);
 
 		break;
 	}
@@ -409,8 +404,8 @@ static int dev_close(struct sr_dev_inst *sdi)
 	if (usb->devhdl == NULL)
 		return SR_ERR;
 
-	sr_info("Closing device %d on %d.%d interface %d.",
-		sdi->index, usb->bus, usb->address, USB_INTERFACE);
+	sr_info("Closing device on %d.%d (logical) / %s (physical) interface %d.",
+		usb->bus, usb->address, sdi->connection_id, USB_INTERFACE);
 	libusb_release_interface(usb->devhdl, USB_INTERFACE);
 	libusb_close(usb->devhdl);
 	usb->devhdl = NULL;
@@ -428,7 +423,6 @@ static int cleanup(void)
 		/* Can get called on an unused driver, doesn't matter. */
 		return SR_OK;
 
-
 	ret = std_dev_clear(di, NULL);
 	g_free(drvc);
 	di->priv = NULL;
@@ -436,7 +430,7 @@ static int cleanup(void)
 	return ret;
 }
 
-static int config_get(int key, GVariant **data, const struct sr_dev_inst *sdi,
+static int config_get(uint32_t key, GVariant **data, const struct sr_dev_inst *sdi,
 		const struct sr_channel_group *cg)
 {
 	struct dev_context *devc;
@@ -490,7 +484,7 @@ static int config_get(int key, GVariant **data, const struct sr_dev_inst *sdi,
 	return ret;
 }
 
-static int config_set(int key, GVariant *data, const struct sr_dev_inst *sdi,
+static int config_set(uint32_t key, GVariant *data, const struct sr_dev_inst *sdi,
 		const struct sr_channel_group *cg)
 {
 	struct dev_context *devc;
@@ -533,7 +527,7 @@ static int config_set(int key, GVariant *data, const struct sr_dev_inst *sdi,
 	return ret;
 }
 
-static int config_list(int key, GVariant **data, const struct sr_dev_inst *sdi,
+static int config_list(uint32_t key, GVariant **data, const struct sr_dev_inst *sdi,
 		const struct sr_channel_group *cg)
 {
 	GVariant *gvar, *range[2];
@@ -547,12 +541,12 @@ static int config_list(int key, GVariant **data, const struct sr_dev_inst *sdi,
 	ret = SR_OK;
 	switch (key) {
 	case SR_CONF_SCAN_OPTIONS:
-		*data = g_variant_new_fixed_array(G_VARIANT_TYPE_INT32,
-				hwopts, ARRAY_SIZE(hwopts), sizeof(int32_t));
+		*data = g_variant_new_fixed_array(G_VARIANT_TYPE_UINT32,
+				scanopts, ARRAY_SIZE(scanopts), sizeof(uint32_t));
 		break;
 	case SR_CONF_DEVICE_OPTIONS:
-		*data = g_variant_new_fixed_array(G_VARIANT_TYPE_INT32,
-				hwcaps, ARRAY_SIZE(hwcaps), sizeof(int32_t));
+		*data = g_variant_new_fixed_array(G_VARIANT_TYPE_UINT32,
+				devopts, ARRAY_SIZE(devopts), sizeof(uint32_t));
 		break;
 	case SR_CONF_SAMPLERATE:
 		g_variant_builder_init(&gvb, G_VARIANT_TYPE("a{sv}"));

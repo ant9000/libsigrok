@@ -31,7 +31,7 @@ static int center_send(struct sr_serial_dev_inst *serial, const char *cmd)
 {
 	int ret;
 
-	if ((ret = serial_write(serial, cmd, strlen(cmd))) < 0) {
+	if ((ret = serial_write_blocking(serial, cmd, strlen(cmd), 0)) < 0) {
 		sr_err("Error sending '%s' command: %d.", cmd, ret);
 		return SR_ERR;
 	}
@@ -170,7 +170,7 @@ static gboolean handle_new_data(struct sr_dev_inst *sdi, int idx)
 
 	/* Try to get as much data as the buffer can hold. */
 	len = SERIAL_BUFSIZE - devc->buflen;
-	len = serial_read(serial, devc->buf + devc->buflen, len);
+	len = serial_read_nonblocking(serial, devc->buf + devc->buflen, len);
 	if (len < 1) {
 		sr_err("Serial port read error: %d.", len);
 		return FALSE;

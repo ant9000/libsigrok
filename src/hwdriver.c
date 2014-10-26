@@ -106,28 +106,99 @@ static struct sr_config_info sr_config_info_data[] = {
 		"Number of analog channels", NULL},
 	{SR_CONF_OUTPUT_VOLTAGE, SR_T_FLOAT, "output_voltage",
 		"Current output voltage", NULL},
-	{SR_CONF_OUTPUT_VOLTAGE_MAX, SR_T_FLOAT, "output_voltage_max",
-		"Maximum output voltage", NULL},
+	{SR_CONF_OUTPUT_VOLTAGE_TARGET, SR_T_FLOAT, "output_voltage_target",
+		"Output voltage target", NULL},
 	{SR_CONF_OUTPUT_CURRENT, SR_T_FLOAT, "output_current",
 		"Current output current", NULL},
-	{SR_CONF_OUTPUT_CURRENT_MAX, SR_T_FLOAT, "output_current_max",
-		"Maximum output current", NULL},
+	{SR_CONF_OUTPUT_CURRENT_LIMIT, SR_T_FLOAT, "output_current_limit",
+		"Output current limit", NULL},
 	{SR_CONF_OUTPUT_ENABLED, SR_T_BOOL, "output_enabled",
 		"Output enabled", NULL},
-	{SR_CONF_OUTPUT_CHANNEL, SR_T_STRING, "output_channel",
+	{SR_CONF_OUTPUT_CHANNEL_CONFIG, SR_T_STRING, "output_channel_config",
 		"Output channel modes", NULL},
-	{SR_CONF_OVER_VOLTAGE_PROTECTION, SR_T_BOOL, "ovp",
-		"Over-voltage protection", NULL},
-	{SR_CONF_OVER_CURRENT_PROTECTION, SR_T_BOOL, "ocp",
-		"Over-current protection", NULL},
+	{SR_CONF_OVER_VOLTAGE_PROTECTION_ENABLED, SR_T_BOOL, "ovp_enabled",
+		"Over-voltage protection enabled", NULL},
+	{SR_CONF_OVER_VOLTAGE_PROTECTION_ACTIVE, SR_T_BOOL, "ovp_active",
+		"Over-voltage protection active", NULL},
+	{SR_CONF_OVER_VOLTAGE_PROTECTION_THRESHOLD, SR_T_FLOAT, "ovp_threshold",
+		"Over-voltage protection threshold", NULL},
+	{SR_CONF_OVER_CURRENT_PROTECTION_ENABLED, SR_T_BOOL, "ocp_enabled",
+		"Over-current protection enabled", NULL},
+	{SR_CONF_OVER_CURRENT_PROTECTION_ACTIVE, SR_T_BOOL, "ocp_active",
+		"Over-current protection active", NULL},
+	{SR_CONF_OVER_CURRENT_PROTECTION_THRESHOLD, SR_T_FLOAT, "ocp_threshold",
+		"Over-current protection threshold", NULL},
 	{SR_CONF_LIMIT_SAMPLES, SR_T_UINT64, "limit_samples",
 		"Sample limit", NULL},
 	{SR_CONF_CLOCK_EDGE, SR_T_STRING, "clock_edge",
 		"Clock edge", NULL},
 	{SR_CONF_AMPLITUDE, SR_T_FLOAT, "amplitude",
 		"Amplitude", NULL},
+	{SR_CONF_OVER_TEMPERATURE_PROTECTION, SR_T_BOOL, "otp",
+		"Over-temperature protection", NULL},
+	{SR_CONF_OUTPUT_REGULATION, SR_T_STRING, "output_regulation",
+		"Output channel regulation", NULL},
+	{SR_CONF_OUTPUT_FREQUENCY, SR_T_UINT64, "output_frequency",
+		"Output frequency", NULL},
+	{SR_CONF_MEASURED_QUANTITY, SR_T_STRING, "measured_quantity",
+		"Measured quantity", NULL},
+	{SR_CONF_MEASURED_2ND_QUANTITY, SR_T_STRING, "measured_2nd_quantity",
+		"Measured secondary quantity", NULL},
+	{SR_CONF_EQUIV_CIRCUIT_MODEL, SR_T_STRING, "equiv_circuit_model",
+		"Equivalent circuit model", NULL},
 	{0, 0, NULL, NULL, NULL},
 };
+
+SR_PRIV const GVariantType *sr_variant_type_get(int datatype)
+{
+	switch (datatype) {
+	case SR_T_INT32:
+		return G_VARIANT_TYPE_INT32;
+	case SR_T_UINT64:
+		return G_VARIANT_TYPE_UINT64;
+	case SR_T_STRING:
+		return G_VARIANT_TYPE_STRING;
+	case SR_T_BOOL:
+		return G_VARIANT_TYPE_BOOLEAN;
+	case SR_T_FLOAT:
+		return G_VARIANT_TYPE_DOUBLE;
+	case SR_T_RATIONAL_PERIOD:
+	case SR_T_RATIONAL_VOLT:
+	case SR_T_UINT64_RANGE:
+	case SR_T_DOUBLE_RANGE:
+		return G_VARIANT_TYPE_TUPLE;
+	case SR_T_KEYVALUE:
+		return G_VARIANT_TYPE_DICTIONARY;
+	default:
+		return NULL;
+	}
+}
+
+SR_PRIV int sr_variant_type_check(uint32_t key, GVariant *value)
+{
+	const struct sr_config_info *info;
+	const GVariantType *type, *expected;
+	char *expected_string, *type_string;
+
+	info = sr_config_info_get(key);
+	if (!info)
+		return SR_OK;
+
+	expected = sr_variant_type_get(info->datatype);
+	type = g_variant_get_type(value);
+	if (!g_variant_type_equal(type, expected)
+			&& !g_variant_type_is_subtype_of(type, expected)) {
+		expected_string = g_variant_type_dup_string(expected);
+		type_string = g_variant_type_dup_string(type);
+		sr_err("Wrong variant type for key '%s': expected '%s', got '%s'",
+			info->name, expected_string, type_string);
+		g_free(expected_string);
+		g_free(type_string);
+		return SR_ERR_ARG;
+	}
+
+	return SR_OK;
+}
 
 /**
  * Return the list of supported hardware drivers.
@@ -210,6 +281,7 @@ SR_API int sr_driver_init(struct sr_context *ctx, struct sr_dev_driver *driver)
 SR_API GSList *sr_driver_scan(struct sr_dev_driver *driver, GSList *options)
 {
 	GSList *l;
+	struct sr_config *src;
 
 	if (!driver) {
 		sr_err("Invalid driver, can't scan for devices.");
@@ -219,6 +291,12 @@ SR_API GSList *sr_driver_scan(struct sr_dev_driver *driver, GSList *options)
 	if (!driver->priv) {
 		sr_err("Driver not initialized, can't scan for devices.");
 		return NULL;
+	}
+
+	for (l = options; l; l = l->next) {
+		src = l->data;
+		if (sr_variant_type_check(src->key, src->data) != SR_OK)
+			return NULL;
 	}
 
 	l = driver->scan(options);
@@ -247,7 +325,7 @@ SR_PRIV void sr_hw_cleanup_all(void)
  *  A floating reference can be passed in for data.
  *  @private
  */
-SR_PRIV struct sr_config *sr_config_new(int key, GVariant *data)
+SR_PRIV struct sr_config *sr_config_new(uint32_t key, GVariant *data)
 {
 	struct sr_config *src;
 
@@ -302,7 +380,7 @@ SR_PRIV void sr_config_free(struct sr_config *src)
 SR_API int sr_config_get(const struct sr_dev_driver *driver,
 		const struct sr_dev_inst *sdi,
 		const struct sr_channel_group *cg,
-		int key, GVariant **data)
+		uint32_t key, GVariant **data)
 {
 	int ret;
 
@@ -342,7 +420,7 @@ SR_API int sr_config_get(const struct sr_dev_driver *driver,
  */
 SR_API int sr_config_set(const struct sr_dev_inst *sdi,
 		const struct sr_channel_group *cg,
-		int key, GVariant *data)
+		uint32_t key, GVariant *data)
 {
 	int ret;
 
@@ -352,7 +430,7 @@ SR_API int sr_config_set(const struct sr_dev_inst *sdi,
 		ret = SR_ERR;
 	else if (!sdi->driver->config_set)
 		ret = SR_ERR_ARG;
-	else
+	else if ((ret = sr_variant_type_check(key, data)) == SR_OK)
 		ret = sdi->driver->config_set(key, data, sdi, cg);
 
 	g_variant_unref(data);
@@ -409,7 +487,7 @@ SR_API int sr_config_commit(const struct sr_dev_inst *sdi)
 SR_API int sr_config_list(const struct sr_dev_driver *driver,
 		const struct sr_dev_inst *sdi,
 		const struct sr_channel_group *cg,
-		int key, GVariant **data)
+		uint32_t key, GVariant **data)
 {
 	int ret;
 
@@ -433,7 +511,7 @@ SR_API int sr_config_list(const struct sr_dev_driver *driver,
  *
  * @since 0.2.0
  */
-SR_API const struct sr_config_info *sr_config_info_get(int key)
+SR_API const struct sr_config_info *sr_config_info_get(uint32_t key)
 {
 	int i;
 

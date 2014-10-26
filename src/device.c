@@ -191,7 +191,7 @@ SR_API gboolean sr_dev_has_option(const struct sr_dev_inst *sdi, int key)
 	ret = FALSE;
 	devopts = g_variant_get_fixed_array(gvar, &num_opts, sizeof(int32_t));
 	for (i = 0; i < num_opts; i++) {
-		if (devopts[i] == key) {
+		if ((devopts[i] & SR_CONF_MASK) == key) {
 			ret = TRUE;
 			break;
 		}
@@ -213,7 +213,7 @@ SR_API gboolean sr_dev_has_option(const struct sr_dev_inst *sdi, int key)
  *  @retval struct sr_dev_inst *. Dynamically allocated, free using
  *              sr_dev_inst_free().
  */
-SR_PRIV struct sr_dev_inst *sr_dev_inst_new(int index, int status,
+SR_PRIV struct sr_dev_inst *sr_dev_inst_new(int status,
 		const char *vendor, const char *model, const char *version)
 {
 	struct sr_dev_inst *sdi;
@@ -224,12 +224,13 @@ SR_PRIV struct sr_dev_inst *sr_dev_inst_new(int index, int status,
 	}
 
 	sdi->driver = NULL;
-	sdi->index = index;
 	sdi->status = status;
 	sdi->inst_type = -1;
 	sdi->vendor = vendor ? g_strdup(vendor) : NULL;
 	sdi->model = model ? g_strdup(model) : NULL;
 	sdi->version = version ? g_strdup(version) : NULL;
+	sdi->serial_num = NULL;
+	sdi->connection_id = NULL;
 	sdi->channels = NULL;
 	sdi->channel_groups = NULL;
 	sdi->session = NULL;
@@ -246,21 +247,28 @@ SR_PRIV struct sr_dev_inst *sr_dev_inst_new(int index, int status,
 SR_PRIV void sr_dev_inst_free(struct sr_dev_inst *sdi)
 {
 	struct sr_channel *ch;
+	struct sr_channel_group *cg;
 	GSList *l;
 
 	for (l = sdi->channels; l; l = l->next) {
 		ch = l->data;
 		g_free(ch->name);
+		g_free(ch->priv);
 		g_free(ch);
 	}
 	g_slist_free(sdi->channels);
 
-	if (sdi->channel_groups)
-		g_slist_free(sdi->channel_groups);
+	for (l = sdi->channel_groups; l; l = l->next) {
+		cg = l->data;
+		g_free(cg->priv);
+	}
+	g_slist_free(sdi->channel_groups);
 
 	g_free(sdi->vendor);
 	g_free(sdi->model);
 	g_free(sdi->version);
+	g_free(sdi->serial_num);
+	g_free(sdi->connection_id);
 	g_free(sdi);
 }
 
@@ -470,5 +478,150 @@ SR_API int sr_dev_close(struct sr_dev_inst *sdi)
 
 	return ret;
 }
+
+/**
+ * Queries a device instances' driver.
+ *
+ * @param sdi Device instance to use. Must not be NULL.
+ *
+ * @return The driver instance or NULL on error.
+ */
+SR_API struct sr_dev_driver *sr_dev_inst_driver_get(struct sr_dev_inst *sdi)
+{
+	if (!sdi || !sdi->driver)
+		return NULL;
+
+	return sdi->driver;
+}
+
+/**
+ * Queries a device instances' vendor.
+ *
+ * @param sdi Device instance to use. Must not be NULL.
+ *
+ * @return The vendor string or NULL.
+ */
+SR_API const char *sr_dev_inst_vendor_get(struct sr_dev_inst *sdi)
+{
+	if (!sdi)
+		return NULL;
+
+	return sdi->vendor;
+}
+
+/**
+ * Queries a device instances' model.
+ *
+ * @param sdi Device instance to use. Must not be NULL.
+ *
+ * @return The model string or NULL.
+ */
+SR_API const char *sr_dev_inst_model_get(struct sr_dev_inst *sdi)
+{
+	if (!sdi)
+		return NULL;
+
+	return sdi->model;
+}
+
+/**
+ * Queries a device instances' version.
+ *
+ * @param sdi Device instance to use. Must not be NULL.
+ *
+ * @return The version string or NULL.
+ */
+SR_API const char *sr_dev_inst_version_get(struct sr_dev_inst *sdi)
+{
+	if (!sdi)
+		return NULL;
+
+	return sdi->version;
+}
+
+/**
+ * Queries a device instances' serial number.
+ *
+ * @param sdi Device instance to use. Must not be NULL.
+ *
+ * @return The serial number string or NULL.
+ */
+SR_API const char *sr_dev_inst_sernum_get(struct sr_dev_inst *sdi)
+{
+	if (!sdi)
+		return NULL;
+
+	return sdi->serial_num;
+}
+
+#ifdef HAVE_LIBUSB_1_0
+/**
+ * Queries a device instances' connection identifier.
+ *
+ * @param sdi Device instance to use. Must not be NULL.
+ *
+ * @return A copy of the connection id string or NULL. The caller is responsible
+ *         for g_free()ing the string when it is no longer needed.
+ */
+SR_API const char *sr_dev_inst_connid_get(struct sr_dev_inst *sdi)
+{
+	struct drv_context *drvc;
+	struct sr_usb_dev_inst *usb;
+	struct libusb_device **devlist;
+	struct libusb_device_descriptor des;
+	int r, cnt, i, a, b;
+	char connection_id[64];
+
+	if (!sdi)
+		return NULL;
+
+	#ifdef HAVE_LIBSERIALPORT
+	struct sr_serial_dev_inst *serial;
+
+	if ((!sdi->connection_id) && (sdi->inst_type == SR_INST_SERIAL)) {
+		/* connection_id isn't populated, let's do that here. */
+
+		serial = sdi->conn;
+		sdi->connection_id = g_strdup(serial->port);
+	}
+	#endif
+
+
+	if ((!sdi->connection_id) && (sdi->inst_type == SR_INST_USB)) {
+		/* connection_id isn't populated, let's do that here. */
+
+		drvc = sdi->driver->priv;
+		usb = sdi->conn;
+
+		if ((cnt = libusb_get_device_list(drvc->sr_ctx->libusb_ctx, &devlist)) < 0) {
+			sr_err("Failed to retrieve device list: %s.",
+			       libusb_error_name(cnt));
+			return NULL;
+		}
+
+		for (i = 0; i < cnt; i++) {
+			if ((r = libusb_get_device_descriptor(devlist[i], &des)) < 0) {
+				sr_err("Failed to get device descriptor: %s.",
+				       libusb_error_name(r));
+				continue;
+			}
+
+			/* Find the USB device by the logical address we know. */
+			b = libusb_get_bus_number(devlist[i]);
+			a = libusb_get_device_address(devlist[i]);
+			if (b != usb->bus || a != usb->address)
+				continue;
+
+			usb_get_port_path(devlist[i], connection_id, sizeof(connection_id));
+			sdi->connection_id = g_strdup(connection_id);
+			break;
+		}
+
+		libusb_free_device_list(devlist, 1);
+	}
+
+	return sdi->connection_id;
+}
+#endif
 
 /** @} */

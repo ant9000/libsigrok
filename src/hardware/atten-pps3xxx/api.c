@@ -31,24 +31,24 @@
  */
 #define SERIALCOMM "9600/8n2"
 
-static const int32_t scanopts[] = {
+static const uint32_t scanopts[] = {
 	SR_CONF_CONN,
 	SR_CONF_SERIALCOMM,
 };
 
-static const int32_t devopts[] = {
+static const uint32_t devopts[] = {
 	SR_CONF_POWER_SUPPLY,
 	SR_CONF_CONTINUOUS,
-	SR_CONF_OUTPUT_CHANNEL,
-	SR_CONF_OVER_CURRENT_PROTECTION,
+	SR_CONF_OUTPUT_CHANNEL_CONFIG | SR_CONF_GET | SR_CONF_SET | SR_CONF_LIST,
+	SR_CONF_OVER_CURRENT_PROTECTION_ENABLED | SR_CONF_GET | SR_CONF_SET,
 };
 
-static const int32_t devopts_cg[] = {
-	SR_CONF_OUTPUT_VOLTAGE,
-	SR_CONF_OUTPUT_VOLTAGE_MAX,
-	SR_CONF_OUTPUT_CURRENT,
-	SR_CONF_OUTPUT_CURRENT_MAX,
-	SR_CONF_OUTPUT_ENABLED,
+static const uint32_t devopts_cg[] = {
+	SR_CONF_OUTPUT_VOLTAGE | SR_CONF_GET,
+	SR_CONF_OUTPUT_VOLTAGE_TARGET | SR_CONF_GET | SR_CONF_SET | SR_CONF_LIST,
+	SR_CONF_OUTPUT_CURRENT | SR_CONF_GET,
+	SR_CONF_OUTPUT_CURRENT_LIMIT | SR_CONF_GET | SR_CONF_SET | SR_CONF_LIST,
+	SR_CONF_OUTPUT_ENABLED | SR_CONF_GET | SR_CONF_SET,
 };
 
 static const char *channel_modes[] = {
@@ -94,7 +94,7 @@ static GSList *scan(GSList *options, int modelid)
 	struct pps_model *model;
 	uint8_t packet[PACKET_SIZE];
 	unsigned int i;
-	int ret;
+	int delay_ms, ret;
 	const char *conn, *serialcomm;
 	char channel[10];
 
@@ -122,17 +122,17 @@ static GSList *scan(GSList *options, int modelid)
 	if (!(serial = sr_serial_dev_inst_new(conn, serialcomm)))
 		return NULL;
 
-	if (serial_open(serial, SERIAL_RDWR | SERIAL_NONBLOCK) != SR_OK)
+	if (serial_open(serial, SERIAL_RDWR) != SR_OK)
 		return NULL;
 	serial_flush(serial);
 
-	/* This is how the vendor software channels for hardware. */
+	/* This is how the vendor software scans for hardware. */
 	memset(packet, 0, PACKET_SIZE);
 	packet[0] = 0xaa;
 	packet[1] = 0xaa;
-	if (serial_write(serial, packet, PACKET_SIZE) == -1) {
-		sr_err("Unable to write while probing for hardware: %s",
-				strerror(errno));
+	delay_ms = serial_timeout(serial, PACKET_SIZE);
+	if (serial_write_blocking(serial, packet, PACKET_SIZE, delay_ms) < PACKET_SIZE) {
+		sr_err("Unable to write while probing for hardware.");
 		return NULL;
 	}
 	/* The device responds with a 24-byte packet when it receives a packet.
@@ -161,7 +161,7 @@ static GSList *scan(GSList *options, int modelid)
 		return NULL;
 	}
 
-	sdi = sr_dev_inst_new(0, SR_ST_INACTIVE, "Atten", model->name, NULL);
+	sdi = sr_dev_inst_new(SR_ST_INACTIVE, "Atten", model->name, NULL);
 	sdi->driver = di;
 	sdi->inst_type = SR_INST_SERIAL;
 	sdi->conn = serial;
@@ -179,6 +179,7 @@ static GSList *scan(GSList *options, int modelid)
 	devc = g_malloc0(sizeof(struct dev_context));
 	devc->model = model;
 	devc->config = g_malloc0(sizeof(struct per_channel_config) * model->num_channels);
+	devc->delay_ms = delay_ms;
 	sdi->priv = devc;
 	drvc->instances = g_slist_append(drvc->instances, sdi);
 	devices = g_slist_append(devices, sdi);
@@ -205,7 +206,7 @@ static int cleanup(void)
 	return std_dev_clear(di, NULL);
 }
 
-static int config_get(int key, GVariant **data, const struct sr_dev_inst *sdi,
+static int config_get(uint32_t key, GVariant **data, const struct sr_dev_inst *sdi,
 		const struct sr_channel_group *cg)
 {
 	struct dev_context *devc;
@@ -221,10 +222,10 @@ static int config_get(int key, GVariant **data, const struct sr_dev_inst *sdi,
 	if (!cg) {
 		/* No channel group: global options. */
 		switch (key) {
-		case SR_CONF_OUTPUT_CHANNEL:
+		case SR_CONF_OUTPUT_CHANNEL_CONFIG:
 			*data = g_variant_new_string(channel_modes[devc->channel_mode]);
 			break;
-		case SR_CONF_OVER_CURRENT_PROTECTION:
+		case SR_CONF_OVER_CURRENT_PROTECTION_ENABLED:
 			*data = g_variant_new_boolean(devc->over_current_protection);
 			break;
 		default:
@@ -239,13 +240,13 @@ static int config_get(int key, GVariant **data, const struct sr_dev_inst *sdi,
 		case SR_CONF_OUTPUT_VOLTAGE:
 			*data = g_variant_new_double(devc->config[channel].output_voltage_last);
 			break;
-		case SR_CONF_OUTPUT_VOLTAGE_MAX:
+		case SR_CONF_OUTPUT_VOLTAGE_TARGET:
 			*data = g_variant_new_double(devc->config[channel].output_voltage_max);
 			break;
 		case SR_CONF_OUTPUT_CURRENT:
 			*data = g_variant_new_double(devc->config[channel].output_current_last);
 			break;
-		case SR_CONF_OUTPUT_CURRENT_MAX:
+		case SR_CONF_OUTPUT_CURRENT_LIMIT:
 			*data = g_variant_new_double(devc->config[channel].output_current_max);
 			break;
 		case SR_CONF_OUTPUT_ENABLED:
@@ -274,7 +275,7 @@ static int find_str(const char *str, const char **strings, int array_size)
 	return idx;
 }
 
-static int config_set(int key, GVariant *data, const struct sr_dev_inst *sdi,
+static int config_set(uint32_t key, GVariant *data, const struct sr_dev_inst *sdi,
 		const struct sr_channel_group *cg)
 {
 	struct dev_context *devc;
@@ -292,7 +293,7 @@ static int config_set(int key, GVariant *data, const struct sr_dev_inst *sdi,
 	if (!cg) {
 		/* No channel group: global options. */
 		switch (key) {
-		case SR_CONF_OUTPUT_CHANNEL:
+		case SR_CONF_OUTPUT_CHANNEL_CONFIG:
 			sval = g_variant_get_string(data, NULL);
 			if ((ival = find_str(sval, channel_modes,
 							ARRAY_SIZE(channel_modes))) == -1) {
@@ -309,7 +310,7 @@ static int config_set(int key, GVariant *data, const struct sr_dev_inst *sdi,
 			devc->channel_mode_set = ival;
 			devc->config_dirty = TRUE;
 			break;
-		case SR_CONF_OVER_CURRENT_PROTECTION:
+		case SR_CONF_OVER_CURRENT_PROTECTION_ENABLED:
 			bval = g_variant_get_boolean(data);
 			if (bval == devc->over_current_protection_set)
 				/* Nothing to do. */
@@ -327,14 +328,14 @@ static int config_set(int key, GVariant *data, const struct sr_dev_inst *sdi,
 		channel = ch->index;
 
 		switch (key) {
-		case SR_CONF_OUTPUT_VOLTAGE_MAX:
+		case SR_CONF_OUTPUT_VOLTAGE_TARGET:
 			dval = g_variant_get_double(data);
 			if (dval < 0 || dval > devc->model->channels[channel].voltage[1])
 				ret = SR_ERR_ARG;
 			devc->config[channel].output_voltage_max = dval;
 			devc->config_dirty = TRUE;
 			break;
-		case SR_CONF_OUTPUT_CURRENT_MAX:
+		case SR_CONF_OUTPUT_CURRENT_LIMIT:
 			dval = g_variant_get_double(data);
 			if (dval < 0 || dval > devc->model->channels[channel].current[1])
 				ret = SR_ERR_ARG;
@@ -358,7 +359,7 @@ static int config_set(int key, GVariant *data, const struct sr_dev_inst *sdi,
 	return ret;
 }
 
-static int config_list(int key, GVariant **data, const struct sr_dev_inst *sdi,
+static int config_list(uint32_t key, GVariant **data, const struct sr_dev_inst *sdi,
 		const struct sr_channel_group *cg)
 {
 	struct dev_context *devc;
@@ -369,8 +370,8 @@ static int config_list(int key, GVariant **data, const struct sr_dev_inst *sdi,
 
 	/* Always available, even without sdi. */
 	if (key == SR_CONF_SCAN_OPTIONS) {
-		*data = g_variant_new_fixed_array(G_VARIANT_TYPE_INT32,
-				scanopts, ARRAY_SIZE(scanopts), sizeof(int32_t));
+		*data = g_variant_new_fixed_array(G_VARIANT_TYPE_UINT32,
+				scanopts, ARRAY_SIZE(scanopts), sizeof(uint32_t));
 		return SR_OK;
 	}
 
@@ -383,10 +384,10 @@ static int config_list(int key, GVariant **data, const struct sr_dev_inst *sdi,
 		/* No channel group: global options. */
 		switch (key) {
 		case SR_CONF_DEVICE_OPTIONS:
-			*data = g_variant_new_fixed_array(G_VARIANT_TYPE_INT32,
-					devopts, ARRAY_SIZE(devopts), sizeof(int32_t));
+			*data = g_variant_new_fixed_array(G_VARIANT_TYPE_UINT32,
+					devopts, ARRAY_SIZE(devopts), sizeof(uint32_t));
 			break;
-		case SR_CONF_OUTPUT_CHANNEL:
+		case SR_CONF_OUTPUT_CHANNEL_CONFIG:
 			if (devc->model->channel_modes == CHANMODE_INDEPENDENT) {
 				/* The 1-channel models. */
 				*data = g_variant_new_strv(channel_modes, 1);
@@ -408,10 +409,10 @@ static int config_list(int key, GVariant **data, const struct sr_dev_inst *sdi,
 
 		switch (key) {
 		case SR_CONF_DEVICE_OPTIONS:
-			*data = g_variant_new_fixed_array(G_VARIANT_TYPE_INT32,
-					devopts_cg, ARRAY_SIZE(devopts_cg), sizeof(int32_t));
+			*data = g_variant_new_fixed_array(G_VARIANT_TYPE_UINT32,
+					devopts_cg, ARRAY_SIZE(devopts_cg), sizeof(uint32_t));
 			break;
-		case SR_CONF_OUTPUT_VOLTAGE_MAX:
+		case SR_CONF_OUTPUT_VOLTAGE_TARGET:
 			g_variant_builder_init(&gvb, G_VARIANT_TYPE_ARRAY);
 			/* Min, max, step. */
 			for (i = 0; i < 3; i++) {
@@ -420,7 +421,7 @@ static int config_list(int key, GVariant **data, const struct sr_dev_inst *sdi,
 			}
 			*data = g_variant_builder_end(&gvb);
 			break;
-		case SR_CONF_OUTPUT_CURRENT_MAX:
+		case SR_CONF_OUTPUT_CURRENT_LIMIT:
 			g_variant_builder_init(&gvb, G_VARIANT_TYPE_ARRAY);
 			/* Min, max, step. */
 			for (i = 0; i < 3; i++) {

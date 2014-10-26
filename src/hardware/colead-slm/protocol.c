@@ -173,6 +173,9 @@ static void process_packet(const struct sr_dev_inst *sdi)
 	sr_session_send(devc->cb_data, &packet);
 
 	devc->num_samples++;
+	if (devc->num_samples >= devc->limit_samples)
+		sdi->driver->dev_acquisition_stop((struct sr_dev_inst *)sdi,
+				devc->cb_data);
 
 }
 
@@ -181,7 +184,7 @@ SR_PRIV int colead_slm_receive_data(int fd, int revents, void *cb_data)
 	const struct sr_dev_inst *sdi;
 	struct dev_context *devc;
 	struct sr_serial_dev_inst *serial;
-	int len;
+	int delay_ms, len;
 	char buf[128];
 
 	(void)fd;
@@ -198,20 +201,21 @@ SR_PRIV int colead_slm_receive_data(int fd, int revents, void *cb_data)
 
 	serial = sdi->conn;
 	if (devc->state == IDLE) {
-		if (serial_read(serial, buf, 128) != 1 || buf[0] != 0x10)
+		if (serial_read_nonblocking(serial, buf, 128) != 1 || buf[0] != 0x10)
 			/* Nothing there, or caught the tail end of a previous packet,
 			 * or some garbage. Unless it's a single "data ready" byte,
 			 * we don't want it. */
 			return TRUE;
 		/* Got 0x10, "measurement ready". */
-		if (serial_write(serial, "\x20", 1) == -1)
-			sr_err("unable to send command: %s", strerror(errno));
+		delay_ms = serial_timeout(serial, 1);
+		if (serial_write_blocking(serial, "\x20", 1, delay_ms) < 1)
+			sr_err("unable to send command");
 		else {
 			devc->state = COMMAND_SENT;
 			devc->buflen = 0;
 		}
 	} else {
-		len = serial_read(serial, devc->buf + devc->buflen,
+		len = serial_read_nonblocking(serial, devc->buf + devc->buflen,
 				10 - devc->buflen);
 		if (len < 1)
 			return TRUE;

@@ -27,16 +27,16 @@
 #include "libsigrok-internal.h"
 #include "agilent-dmm.h"
 
-static const int32_t hwopts[] = {
+static const uint32_t scanopts[] = {
 	SR_CONF_CONN,
 	SR_CONF_SERIALCOMM,
 };
 
-static const int32_t hwcaps[] = {
+static const uint32_t devopts[] = {
 	SR_CONF_MULTIMETER,
-	SR_CONF_LIMIT_SAMPLES,
-	SR_CONF_LIMIT_MSEC,
 	SR_CONF_CONTINUOUS,
+	SR_CONF_LIMIT_SAMPLES | SR_CONF_SET,
+	SR_CONF_LIMIT_MSEC | SR_CONF_SET,
 };
 
 extern const struct agdmm_job agdmm_jobs_u12xx[];
@@ -112,13 +112,12 @@ static GSList *scan(GSList *options)
 	if (!(serial = sr_serial_dev_inst_new(conn, serialcomm)))
 		return NULL;
 
-	if (serial_open(serial, SERIAL_RDWR | SERIAL_NONBLOCK) != SR_OK)
+	if (serial_open(serial, SERIAL_RDWR) != SR_OK)
 		return NULL;
 
 	serial_flush(serial);
-	if (serial_write(serial, "*IDN?\r\n", 7) == -1) {
-		sr_err("Unable to send identification string: %s.",
-		       strerror(errno));
+	if (serial_write_blocking(serial, "*IDN?\r\n", 7, SERIAL_WRITE_TIMEOUT_MS) < 7) {
+		sr_err("Unable to send identification string.");
 		return NULL;
 	}
 
@@ -137,7 +136,7 @@ static GSList *scan(GSList *options)
 		for (i = 0; supported_agdmm[i].model; i++) {
 			if (strcmp(supported_agdmm[i].modelname, tokens[1]))
 				continue;
-			if (!(sdi = sr_dev_inst_new(0, SR_ST_INACTIVE, "Agilent",
+			if (!(sdi = sr_dev_inst_new(SR_ST_INACTIVE, "Agilent",
 					tokens[1], tokens[3])))
 				return NULL;
 			if (!(devc = g_try_malloc0(sizeof(struct dev_context)))) {
@@ -178,7 +177,7 @@ static int cleanup(void)
 	return std_dev_clear(di, NULL);
 }
 
-static int config_set(int id, GVariant *data, const struct sr_dev_inst *sdi,
+static int config_set(uint32_t key, GVariant *data, const struct sr_dev_inst *sdi,
 		const struct sr_channel_group *cg)
 {
 	struct dev_context *devc;
@@ -193,7 +192,7 @@ static int config_set(int id, GVariant *data, const struct sr_dev_inst *sdi,
 		return SR_ERR_BUG;
 	}
 
-	switch (id) {
+	switch (key) {
 	case SR_CONF_LIMIT_MSEC:
 		/* TODO: not yet implemented */
 		if (g_variant_get_uint64(data) == 0) {
@@ -216,7 +215,7 @@ static int config_set(int id, GVariant *data, const struct sr_dev_inst *sdi,
 	return SR_OK;
 }
 
-static int config_list(int key, GVariant **data, const struct sr_dev_inst *sdi,
+static int config_list(uint32_t key, GVariant **data, const struct sr_dev_inst *sdi,
 		const struct sr_channel_group *cg)
 {
 	(void)sdi;
@@ -224,12 +223,12 @@ static int config_list(int key, GVariant **data, const struct sr_dev_inst *sdi,
 
 	switch (key) {
 	case SR_CONF_SCAN_OPTIONS:
-		*data = g_variant_new_fixed_array(G_VARIANT_TYPE_INT32,
-				hwopts, ARRAY_SIZE(hwopts), sizeof(int32_t));
+		*data = g_variant_new_fixed_array(G_VARIANT_TYPE_UINT32,
+				scanopts, ARRAY_SIZE(scanopts), sizeof(uint32_t));
 		break;
 	case SR_CONF_DEVICE_OPTIONS:
-		*data = g_variant_new_fixed_array(G_VARIANT_TYPE_INT32,
-				hwcaps, ARRAY_SIZE(hwcaps), sizeof(int32_t));
+		*data = g_variant_new_fixed_array(G_VARIANT_TYPE_UINT32,
+				devopts, ARRAY_SIZE(devopts), sizeof(uint32_t));
 		break;
 	default:
 		return SR_ERR_NA;
