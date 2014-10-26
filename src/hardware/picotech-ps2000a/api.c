@@ -102,7 +102,7 @@ static GSList *scan(GSList *options)
                         set_info(devc);
 
                         /* Register the device with libsigrok. */
-                        sdi = sr_dev_inst_new(0, SR_ST_INACTIVE,
+                        sdi = sr_dev_inst_new(SR_ST_INACTIVE,
                                         "Picotech", devc->modelString, devc->serial);
                         if (!sdi) {
                                 sr_err("Failed to create device instance.");
