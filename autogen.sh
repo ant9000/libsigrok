@@ -50,6 +50,7 @@ elif [ "x$OS" = "xMINGW32_NT-6.1" ]; then
 	# Windows 7
 	ACLOCAL_DIR="-I /usr/local/share/aclocal"
 fi
+ACLOCAL_DIR="-I `pwd`/aclocal/ $ACLOCAL_DIR"
 
 echo "Generating build system..."
 ${LIBTOOLIZE} --install --copy --quiet || exit 1
