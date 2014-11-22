@@ -102,8 +102,7 @@ static GSList *scan(GSList *options)
                         set_info(devc);
 
                         /* Register the device with libsigrok. */
-                        sdi = sr_dev_inst_new(SR_ST_INACTIVE,
-                                        "Picotech", devc->modelString, devc->serial);
+                        sdi = sr_dev_inst_user_new("Picotech", devc->modelString, devc->serial);
                         if (!sdi) {
                                 sr_err("Failed to create device instance.");
                                 g_free(devc);          
@@ -202,7 +201,7 @@ static int dev_close(struct sr_dev_inst *sdi)
 
 }
 
-static int config_get(int id, GVariant **data, const struct sr_dev_inst *sdi,
+static int config_get(uint32_t id, GVariant **data, const struct sr_dev_inst *sdi,
                 const struct sr_channel_group *cg)
 {
         UNIT *devc = NULL;
@@ -250,14 +249,14 @@ static int config_get(int id, GVariant **data, const struct sr_dev_inst *sdi,
 
 }
 
-static int config_set(int id, GVariant *data, const struct sr_dev_inst *sdi,
+static int config_set(uint32_t id, GVariant *data, const struct sr_dev_inst *sdi,
                 const struct sr_channel_group *cg)
 {
         // TODO
         return SR_OK;
 }
 
-static int config_list(int key, GVariant **data, const struct sr_dev_inst *sdi,
+static int config_list(uint32_t key, GVariant **data, const struct sr_dev_inst *sdi,
                 const struct sr_channel_group *cg)
 {
         UNIT *devc = NULL;
