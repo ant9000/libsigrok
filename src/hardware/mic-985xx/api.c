@@ -25,10 +25,17 @@ static const uint32_t scanopts[] = {
 	SR_CONF_SERIALCOMM,
 };
 
-static const uint32_t devopts[] = {
+static const uint32_t drvopts_temp[] = {
+	SR_CONF_THERMOMETER,
+};
+
+static const uint32_t drvopts_temp_hum[] = {
 	SR_CONF_THERMOMETER,
 	SR_CONF_HYGROMETER,
-	SR_CONF_CONTINUOUS,
+};
+
+static const uint32_t devopts[] = {
+	SR_CONF_CONTINUOUS | SR_CONF_SET,
 	SR_CONF_LIMIT_SAMPLES | SR_CONF_SET,
 	SR_CONF_LIMIT_MSEC | SR_CONF_SET,
 };
@@ -84,35 +91,27 @@ static GSList *mic_scan(const char *conn, const char *serialcomm, int idx)
 	sr_info("Found device on port %s.", conn);
 
 	/* TODO: Fill in version from protocol response. */
-	if (!(sdi = sr_dev_inst_new(SR_ST_INACTIVE, mic_devs[idx].vendor,
-				    mic_devs[idx].device, NULL)))
-		goto scan_cleanup;
-
-	if (!(devc = g_try_malloc0(sizeof(struct dev_context)))) {
-		sr_err("Device context malloc failed.");
-		goto scan_cleanup;
-	}
-
+	sdi = g_malloc0(sizeof(struct sr_dev_inst));
+	sdi->status = SR_ST_INACTIVE;
+	sdi->vendor = g_strdup(mic_devs[idx].vendor);
+	sdi->model = g_strdup(mic_devs[idx].device);
+	devc = g_malloc0(sizeof(struct dev_context));
 	sdi->inst_type = SR_INST_SERIAL;
 	sdi->conn = serial;
-
 	sdi->priv = devc;
 	sdi->driver = mic_devs[idx].di;
 
-	if (!(ch = sr_channel_new(0, SR_CHANNEL_ANALOG, TRUE, "Temperature")))
-		goto scan_cleanup;
+	ch = sr_channel_new(0, SR_CHANNEL_ANALOG, TRUE, "Temperature");
 	sdi->channels = g_slist_append(sdi->channels, ch);
 
 	if (mic_devs[idx].has_humidity) {
-		if (!(ch = sr_channel_new(1, SR_CHANNEL_ANALOG, TRUE, "Humidity")))
-			goto scan_cleanup;
+		ch = sr_channel_new(1, SR_CHANNEL_ANALOG, TRUE, "Humidity");
 		sdi->channels = g_slist_append(sdi->channels, ch);
 	}
 
 	drvc->instances = g_slist_append(drvc->instances, sdi);
 	devices = g_slist_append(devices, sdi);
 
-scan_cleanup:
 	serial_close(serial);
 
 	return devices;
@@ -191,9 +190,8 @@ static int config_set(uint32_t key, GVariant *data, const struct sr_dev_inst *sd
 }
 
 static int config_list(uint32_t key, GVariant **data, const struct sr_dev_inst *sdi,
-		const struct sr_channel_group *cg)
+		const struct sr_channel_group *cg, int idx)
 {
-	(void)sdi;
 	(void)cg;
 
 	switch (key) {
@@ -202,8 +200,18 @@ static int config_list(uint32_t key, GVariant **data, const struct sr_dev_inst *
 				scanopts, ARRAY_SIZE(scanopts), sizeof(uint32_t));
 		break;
 	case SR_CONF_DEVICE_OPTIONS:
-		*data = g_variant_new_fixed_array(G_VARIANT_TYPE_UINT32,
+		if (!sdi && !mic_devs[idx].has_humidity) {
+			*data = g_variant_new_fixed_array(G_VARIANT_TYPE_UINT32,
+				drvopts_temp, ARRAY_SIZE(drvopts_temp),
+				sizeof(uint32_t));
+		} else if (!sdi && mic_devs[idx].has_humidity) {
+			*data = g_variant_new_fixed_array(G_VARIANT_TYPE_UINT32,
+				drvopts_temp_hum, ARRAY_SIZE(drvopts_temp_hum),
+				sizeof(uint32_t));
+		} else {
+			*data = g_variant_new_fixed_array(G_VARIANT_TYPE_UINT32,
 				devopts, ARRAY_SIZE(devopts), sizeof(uint32_t));
+		}
 		break;
 	default:
 		return SR_ERR_NA;
@@ -254,6 +262,10 @@ static GSList *scan_##X(GSList *options) { return scan(options, X); }
 static GSList *dev_list_##X(void) { return dev_list(X); }
 #define HW_DEV_CLEAR(X) \
 static int dev_clear_##X(void) { return dev_clear(X); }
+#define HW_CONFIG_LIST(X) \
+static int config_list_##X(uint32_t key, GVariant **data, \
+const struct sr_dev_inst *sdi, const struct sr_channel_group *cg) { \
+return config_list(key, data, sdi, cg, X); }
 #define HW_DEV_ACQUISITION_START(X) \
 static int dev_acquisition_start_##X(const struct sr_dev_inst *sdi, \
 void *cb_data) { return dev_acquisition_start(sdi, cb_data, X); }
@@ -265,6 +277,7 @@ HW_CLEANUP(ID_UPPER) \
 HW_SCAN(ID_UPPER) \
 HW_DEV_LIST(ID_UPPER) \
 HW_DEV_CLEAR(ID_UPPER) \
+HW_CONFIG_LIST(ID_UPPER) \
 HW_DEV_ACQUISITION_START(ID_UPPER) \
 SR_PRIV struct sr_dev_driver ID##_driver_info = { \
 	.name = NAME, \
@@ -277,7 +290,7 @@ SR_PRIV struct sr_dev_driver ID##_driver_info = { \
 	.dev_clear = dev_clear_##ID_UPPER, \
 	.config_get = NULL, \
 	.config_set = config_set, \
-	.config_list = config_list, \
+	.config_list = config_list_##ID_UPPER, \
 	.dev_open = std_serial_dev_open, \
 	.dev_close = std_serial_dev_close, \
 	.dev_acquisition_start = dev_acquisition_start_##ID_UPPER, \

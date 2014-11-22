@@ -70,7 +70,6 @@ static GSList *scan(GSList *options)
 	struct sr_usb_dev_inst *usb;
 	struct device_info dev_info;
 	int ret, i;
-	char *fw_ver_str;
 
 	(void)options;
 
@@ -92,11 +91,7 @@ static GSList *scan(GSList *options)
 			continue;
 		}
 
-		if (!(devc = g_try_malloc(sizeof(struct dev_context)))) {
-			sr_err("Device instance malloc failed.");
-			sr_usb_dev_inst_free(usb);
-			continue;
-		}
+		devc = g_malloc0(sizeof(struct dev_context));
 
 		if (!(devc->xfer_in = libusb_alloc_transfer(0))) {
 			sr_err("Transfer malloc failed.");
@@ -113,34 +108,16 @@ static GSList *scan(GSList *options)
 			continue;
 		}
 
-		fw_ver_str = g_strdup_printf("%u.%u", dev_info.fw_ver_major,
-			dev_info.fw_ver_minor);
-		if (!fw_ver_str) {
-			sr_err("Firmware string malloc failed.");
-			sr_usb_dev_inst_free(usb);
-			libusb_free_transfer(devc->xfer_in);
-			libusb_free_transfer(devc->xfer_out);
-			g_free(devc);
-			continue;
-		}
-
-		sdi = sr_dev_inst_new(SR_ST_INACTIVE, VENDOR_NAME,
-			MODEL_NAME, fw_ver_str);
-		g_free(fw_ver_str);
-		if (!sdi) {
-			sr_err("sr_dev_inst_new failed.");
-			sr_usb_dev_inst_free(usb);
-			libusb_free_transfer(devc->xfer_in);
-			libusb_free_transfer(devc->xfer_out);
-			g_free(devc);
-			continue;
-		}
-
+		sdi = g_malloc0(sizeof(struct sr_dev_inst));
+		sdi->status = SR_ST_INACTIVE;
+		sdi->vendor = g_strdup(VENDOR_NAME);
+		sdi->model = g_strdup(MODEL_NAME);
+		sdi->version = g_strdup_printf("%u.%u", dev_info.fw_ver_major, dev_info.fw_ver_minor);
+		sdi->serial_num = g_strdup_printf("%d", dev_info.serial);
 		sdi->priv = devc;
 		sdi->driver = di;
 		sdi->inst_type = SR_INST_USB;
 		sdi->conn = usb;
-		sdi->serial_num = g_strdup_printf("%d", dev_info.serial);
 
 		for (i = 0; channel_names[i]; i++) {
 			ch = sr_channel_new(i, SR_CHANNEL_LOGIC, TRUE,

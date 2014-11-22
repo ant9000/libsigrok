@@ -41,6 +41,7 @@ int main(void)
 	srunner_add_suite(srunner, suite_session());
 	srunner_add_suite(srunner, suite_strutil());
 	srunner_add_suite(srunner, suite_version());
+	srunner_add_suite(srunner, suite_device());
 
 	srunner_run_all(srunner, CK_VERBOSE);
 	ret = srunner_ntests_failed(srunner);

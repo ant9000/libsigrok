@@ -291,22 +291,21 @@ static struct sr_dev_inst *probe_device(struct sr_scpi_dev_inst *scpi)
 		}
 	}
 
-	if (!model || !(sdi = sr_dev_inst_new(SR_ST_ACTIVE,
-					      model->series->vendor->name,
-						  model->name,
-						  hw_info->firmware_version))) {
+	if (!model) {
 		sr_scpi_hw_info_free(hw_info);
 		return NULL;
 	}
 
+	sdi = g_malloc0(sizeof(struct sr_dev_inst));
+	sdi->status = SR_ST_ACTIVE;
+	sdi->vendor = g_strdup(model->series->vendor->name);
+	sdi->model = g_strdup(model->name);
+	sdi->version = g_strdup(hw_info->firmware_version);
 	sdi->conn = scpi;
 	sdi->driver = di;
 	sdi->inst_type = SR_INST_SCPI;
 	sdi->serial_num = g_strdup(hw_info->serial_number);
-
-	if (!(devc = g_try_malloc0(sizeof(struct dev_context))))
-		return NULL;
-
+	devc = g_malloc0(sizeof(struct dev_context));
 	devc->limit_frames = 0;
 	devc->model = model;
 	devc->format = model->series->format;
@@ -362,8 +361,6 @@ static struct sr_dev_inst *probe_device(struct sr_scpi_dev_inst *scpi)
 				return NULL;
 			ch = sr_channel_new(i, SR_CHANNEL_LOGIC, TRUE, channel_name);
 			g_free(channel_name);
-			if (!ch)
-				return NULL;
 			sdi->channels = g_slist_append(sdi->channels, ch);
 			devc->digital_group->channels = g_slist_append(
 					devc->digital_group->channels, ch);

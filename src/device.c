@@ -48,18 +48,14 @@
  *  @param[in]  enabled @copydoc sr_channel::enabled
  *  @param[in]  name @copydoc sr_channel::name
  *
- *  @return NULL (failure) or new struct sr_channel*.
+ *  @return A new struct sr_channel*.
  */
 SR_PRIV struct sr_channel *sr_channel_new(int index, int type,
 		gboolean enabled, const char *name)
 {
 	struct sr_channel *ch;
 
-	if (!(ch = g_try_malloc0(sizeof(struct sr_channel)))) {
-		sr_err("Channel malloc failed.");
-		return NULL;
-	}
-
+	ch = g_malloc0(sizeof(struct sr_channel));
 	ch->index = index;
 	ch->type = type;
 	ch->enabled = enabled;
@@ -201,48 +197,50 @@ SR_API gboolean sr_dev_has_option(const struct sr_dev_inst *sdi, int key)
 	return ret;
 }
 
-/** @private
- *  Allocate and init new device instance struct.
- *  @param[in]  index   @copydoc sr_dev_inst::index
- *  @param[in]  status  @copydoc sr_dev_inst::status
- *  @param[in]  vendor  @copydoc sr_dev_inst::vendor
- *  @param[in]  model   @copydoc sr_dev_inst::model
- *  @param[in]  version @copydoc sr_dev_inst::version
+/**
+ * Allocate and init a new user-generated device instance.
  *
- *  @retval NULL Error
- *  @retval struct sr_dev_inst *. Dynamically allocated, free using
- *              sr_dev_inst_free().
+ * @param vendor Device vendor
+ * @param model Device model
+ * @param version Device version
+ *
+ * @retval struct sr_dev_inst *. Dynamically allocated, free using
+ *         sr_dev_inst_free().
  */
-SR_PRIV struct sr_dev_inst *sr_dev_inst_new(int status,
-		const char *vendor, const char *model, const char *version)
+SR_API struct sr_dev_inst *sr_dev_inst_user_new(const char *vendor,
+		const char *model, const char *version)
 {
 	struct sr_dev_inst *sdi;
 
-	if (!(sdi = g_try_malloc(sizeof(struct sr_dev_inst)))) {
-		sr_err("Device instance malloc failed.");
-		return NULL;
-	}
+	sdi = g_malloc0(sizeof(struct sr_dev_inst));
 
-	sdi->driver = NULL;
-	sdi->status = status;
-	sdi->inst_type = -1;
-	sdi->vendor = vendor ? g_strdup(vendor) : NULL;
-	sdi->model = model ? g_strdup(model) : NULL;
-	sdi->version = version ? g_strdup(version) : NULL;
-	sdi->serial_num = NULL;
-	sdi->connection_id = NULL;
-	sdi->channels = NULL;
-	sdi->channel_groups = NULL;
-	sdi->session = NULL;
-	sdi->conn = NULL;
-	sdi->priv = NULL;
+	sdi->vendor = g_strdup(vendor);
+	sdi->model = g_strdup(model);
+	sdi->version = g_strdup(version);
+	sdi->inst_type = SR_INST_USER;
 
 	return sdi;
 }
 
+/**
+ * Add a new channel to the specified device instance.
+ */
+SR_API int sr_dev_inst_channel_add(struct sr_dev_inst *sdi, int index, int type, const char *name)
+{
+	struct sr_channel *ch;
+
+	if (!sdi || sdi->inst_type != SR_INST_USER || index < 0)
+		return SR_ERR_ARG;
+
+	ch = sr_channel_new(index, type, TRUE, name);
+	sdi->channels = g_slist_append(sdi->channels, ch);
+
+	return SR_OK;
+}
+
 /** @private
  *  Free device instance struct created by sr_dev_inst().
- *  @param sdi  struct* to free.
+ *  @param sdi device instance to free.
  */
 SR_PRIV void sr_dev_inst_free(struct sr_dev_inst *sdi)
 {
@@ -260,7 +258,10 @@ SR_PRIV void sr_dev_inst_free(struct sr_dev_inst *sdi)
 
 	for (l = sdi->channel_groups; l; l = l->next) {
 		cg = l->data;
+		g_free(cg->name);
+		g_slist_free(cg->channels);
 		g_free(cg->priv);
+		g_free(cg);
 	}
 	g_slist_free(sdi->channel_groups);
 
@@ -486,7 +487,7 @@ SR_API int sr_dev_close(struct sr_dev_inst *sdi)
  *
  * @return The driver instance or NULL on error.
  */
-SR_API struct sr_dev_driver *sr_dev_inst_driver_get(struct sr_dev_inst *sdi)
+SR_API struct sr_dev_driver *sr_dev_inst_driver_get(const struct sr_dev_inst *sdi)
 {
 	if (!sdi || !sdi->driver)
 		return NULL;
@@ -501,7 +502,7 @@ SR_API struct sr_dev_driver *sr_dev_inst_driver_get(struct sr_dev_inst *sdi)
  *
  * @return The vendor string or NULL.
  */
-SR_API const char *sr_dev_inst_vendor_get(struct sr_dev_inst *sdi)
+SR_API const char *sr_dev_inst_vendor_get(const struct sr_dev_inst *sdi)
 {
 	if (!sdi)
 		return NULL;
@@ -516,7 +517,7 @@ SR_API const char *sr_dev_inst_vendor_get(struct sr_dev_inst *sdi)
  *
  * @return The model string or NULL.
  */
-SR_API const char *sr_dev_inst_model_get(struct sr_dev_inst *sdi)
+SR_API const char *sr_dev_inst_model_get(const struct sr_dev_inst *sdi)
 {
 	if (!sdi)
 		return NULL;
@@ -531,7 +532,7 @@ SR_API const char *sr_dev_inst_model_get(struct sr_dev_inst *sdi)
  *
  * @return The version string or NULL.
  */
-SR_API const char *sr_dev_inst_version_get(struct sr_dev_inst *sdi)
+SR_API const char *sr_dev_inst_version_get(const struct sr_dev_inst *sdi)
 {
 	if (!sdi)
 		return NULL;
@@ -546,7 +547,7 @@ SR_API const char *sr_dev_inst_version_get(struct sr_dev_inst *sdi)
  *
  * @return The serial number string or NULL.
  */
-SR_API const char *sr_dev_inst_sernum_get(struct sr_dev_inst *sdi)
+SR_API const char *sr_dev_inst_sernum_get(const struct sr_dev_inst *sdi)
 {
 	if (!sdi)
 		return NULL;
@@ -554,7 +555,6 @@ SR_API const char *sr_dev_inst_sernum_get(struct sr_dev_inst *sdi)
 	return sdi->serial_num;
 }
 
-#ifdef HAVE_LIBUSB_1_0
 /**
  * Queries a device instances' connection identifier.
  *
@@ -563,30 +563,34 @@ SR_API const char *sr_dev_inst_sernum_get(struct sr_dev_inst *sdi)
  * @return A copy of the connection id string or NULL. The caller is responsible
  *         for g_free()ing the string when it is no longer needed.
  */
-SR_API const char *sr_dev_inst_connid_get(struct sr_dev_inst *sdi)
+SR_API const char *sr_dev_inst_connid_get(const struct sr_dev_inst *sdi)
 {
 	struct drv_context *drvc;
+	int r, cnt, i, a, b;
+	char connection_id[64];
+
+#ifdef HAVE_LIBUSB_1_0
 	struct sr_usb_dev_inst *usb;
 	struct libusb_device **devlist;
 	struct libusb_device_descriptor des;
-	int r, cnt, i, a, b;
-	char connection_id[64];
+#endif
 
 	if (!sdi)
 		return NULL;
 
-	#ifdef HAVE_LIBSERIALPORT
+#ifdef HAVE_LIBSERIALPORT
 	struct sr_serial_dev_inst *serial;
 
 	if ((!sdi->connection_id) && (sdi->inst_type == SR_INST_SERIAL)) {
 		/* connection_id isn't populated, let's do that here. */
 
 		serial = sdi->conn;
-		sdi->connection_id = g_strdup(serial->port);
+		((struct sr_dev_inst *)sdi)->connection_id = g_strdup(serial->port);
 	}
-	#endif
+#endif
 
 
+#ifdef HAVE_LIBUSB_1_0
 	if ((!sdi->connection_id) && (sdi->inst_type == SR_INST_USB)) {
 		/* connection_id isn't populated, let's do that here. */
 
@@ -613,15 +617,45 @@ SR_API const char *sr_dev_inst_connid_get(struct sr_dev_inst *sdi)
 				continue;
 
 			usb_get_port_path(devlist[i], connection_id, sizeof(connection_id));
-			sdi->connection_id = g_strdup(connection_id);
+			((struct sr_dev_inst *)sdi)->connection_id = g_strdup(connection_id);
 			break;
 		}
 
 		libusb_free_device_list(devlist, 1);
 	}
+#endif
 
 	return sdi->connection_id;
 }
-#endif
+
+/**
+ * Queries a device instances' channel list.
+ *
+ * @param sdi Device instance to use. Must not be NULL.
+ *
+ * @return The GSList of channels or NULL.
+ */
+SR_API GSList *sr_dev_inst_channels_get(const struct sr_dev_inst *sdi)
+{
+	if (!sdi)
+		return NULL;
+
+	return sdi->channels;
+}
+
+/**
+ * Queries a device instances' channel groups list.
+ *
+ * @param sdi Device instance to use. Must not be NULL.
+ *
+ * @return The GSList of channel groups or NULL.
+ */
+SR_API GSList *sr_dev_inst_channel_groups_get(const struct sr_dev_inst *sdi)
+{
+	if (!sdi)
+		return NULL;
+
+	return sdi->channel_groups;
+}
 
 /** @} */

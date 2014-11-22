@@ -49,6 +49,7 @@ static const struct zp_model zeroplus_models[] = {
 	{0x0c12, 0x700d, "LAP-C(322000)", 32, 2048, 200},
 	{0x0c12, 0x700e, "LAP-C(16032)",  16, 32,   100},
 	{0x0c12, 0x7016, "LAP-C(162000)", 16, 2048, 200},
+	{0x0c12, 0x7100, "AKIP-9101", 16, 256, 200},
 	{ 0, 0, 0, 0, 0, 0 }
 };
 
@@ -221,21 +222,16 @@ static GSList *scan(GSList *options)
 		sr_info("Found ZEROPLUS %s.", prof->model_name);
 
 		/* Register the device with libsigrok. */
-		if (!(sdi = sr_dev_inst_new(SR_ST_INACTIVE,
-				VENDOR_NAME, prof->model_name, NULL))) {
-			sr_err("%s: sr_dev_inst_new failed", __func__);
-			return NULL;
-		}
+		sdi = g_malloc0(sizeof(struct sr_dev_inst));
+		sdi->status = SR_ST_INACTIVE;
+		sdi->vendor = g_strdup(VENDOR_NAME);
+		sdi->model = g_strdup(prof->model_name);
 		sdi->driver = di;
 		sdi->serial_num = g_strdup(serial_num);
 		sdi->connection_id = g_strdup(connection_id);
 
 		/* Allocate memory for our private driver context. */
-		if (!(devc = g_try_malloc0(sizeof(struct dev_context)))) {
-			sr_err("Device context malloc failed.");
-			return NULL;
-		}
-
+		devc = g_malloc0(sizeof(struct dev_context));
 		sdi->priv = devc;
 		devc->prof = prof;
 		devc->num_channels = prof->channels;
@@ -252,9 +248,8 @@ static GSList *scan(GSList *options)
 
 		/* Fill in channellist according to this device's profile. */
 		for (j = 0; j < devc->num_channels; j++) {
-			if (!(ch = sr_channel_new(j, SR_CHANNEL_LOGIC, TRUE,
-					channel_names[j])))
-				return NULL;
+			ch = sr_channel_new(j, SR_CHANNEL_LOGIC, TRUE,
+					channel_names[j]);
 			sdi->channels = g_slist_append(sdi->channels, ch);
 		}
 

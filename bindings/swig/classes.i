@@ -84,6 +84,7 @@ template< class T > class enable_shared_from_this;
 %shared_ptr(sigrok::Trigger);
 %shared_ptr(sigrok::TriggerStage);
 %shared_ptr(sigrok::TriggerMatch);
+%shared_ptr(sigrok::UserDevice);
 
 %template(StringMap) std::map<std::string, std::string>;
 
@@ -160,11 +161,11 @@ typedef std::map<const sigrok::ConfigKey *, Glib::VariantBase>
     map_ConfigKey_Variant;
 }
 
-%attributeval(sigrok::Context,
+%attributemap(Context,
     map_string_Driver, drivers, drivers);
-%attributeval(sigrok::Context,
+%attributemap(Context,
     map_string_InputFormat, input_formats, input_formats);
-%attributeval(sigrok::Context,
+%attributemap(Context,
     map_string_OutputFormat, output_formats, output_formats);
 
 %attributestring(sigrok::Context,
@@ -196,27 +197,27 @@ typedef std::map<const sigrok::ConfigKey *, Glib::VariantBase>
 %attributestring(sigrok::Option,
     std::string, description, description);
 /* Currently broken on Python due to some issue with variant typemaps. */
-/* %attributeval(sigrok::Option,
+/* %attributevector(Option,
     Glib::VariantBase, default_value, default_value); */
-%attributeval(sigrok::Option,
+%attributevector(Option,
     std::vector<Glib::VariantBase>, values, values);
 
 %attributestring(sigrok::OutputFormat,
     std::string, name, name);
 %attributestring(sigrok::OutputFormat,
     std::string, description, description);
-%attributeval(sigrok::OutputFormat,
+%attributemap(OutputFormat,
     map_string_Option, options, options);
 
 %attributestring(sigrok::Device, std::string, vendor, vendor);
 %attributestring(sigrok::Device, std::string, model, model);
 %attributestring(sigrok::Device, std::string, version, version);
 
-%attributeval(sigrok::Device,
+%attributevector(Device,
     std::vector<std::shared_ptr<sigrok::Channel> >,
     channels, channels);
 
-%attributeval(sigrok::Device, map_string_ChannelGroup,
+%attributemap(Device, map_string_ChannelGroup,
     channel_groups, channel_groups);
 
 /* Using %attributestring for shared_ptr attribute. See
@@ -230,17 +231,17 @@ typedef std::map<const sigrok::ConfigKey *, Glib::VariantBase>
 %attribute(sigrok::Channel, unsigned int, index, index);
 
 %attributestring(sigrok::ChannelGroup, std::string, name, name);
-%attributeval(sigrok::ChannelGroup,
+%attributevector(ChannelGroup,
     std::vector<std::shared_ptr<sigrok::Channel> >,
     channels, channels);
 
 %attributestring(sigrok::Trigger, std::string, name, name);
-%attributeval(sigrok::Trigger,
+%attributevector(Trigger,
     std::vector<std::shared_ptr<sigrok::TriggerStage> >,
     stages, stages);
 
 %attribute(sigrok::TriggerStage, int, number, number);
-%attributeval(sigrok::TriggerStage,
+%attributevector(TriggerStage,
     std::vector<std::shared_ptr<sigrok::TriggerMatch> >,
     matches, matches);
 
@@ -249,7 +250,7 @@ typedef std::map<const sigrok::ConfigKey *, Glib::VariantBase>
 %attribute(sigrok::TriggerMatch, const sigrok::TriggerMatchType *, type, type);
 %attribute(sigrok::TriggerMatch, float, value, value);
 
-%attributeval(sigrok::Session,
+%attributevector(Session,
     std::vector<std::shared_ptr<sigrok::Device> >,
     devices, devices);
 
@@ -260,17 +261,19 @@ typedef std::map<const sigrok::ConfigKey *, Glib::VariantBase>
 
 %attribute(sigrok::Packet,
     const sigrok::PacketType *, type, type);
-%attributestring(sigrok::Packet,
-    std::shared_ptr<sigrok::PacketPayload>, payload, payload);
 
-%attributeval(sigrok::Meta, map_ConfigKey_Variant, config, config);
+%attributemap(Meta, map_ConfigKey_Variant, config, config);
 
+%attributevector(Analog,
+    std::vector<std::shared_ptr<sigrok::Channel> >, channels, channels);
 %attribute(sigrok::Analog, int, num_samples, num_samples);
 %attribute(sigrok::Analog, const sigrok::Quantity *, mq, mq);
 %attribute(sigrok::Analog, const sigrok::Unit *, unit, unit);
-%attributeval(sigrok::Analog, std::vector<const sigrok::QuantityFlag *>, mq_flags, mq_flags);
+%attributevector(Analog, std::vector<const sigrok::QuantityFlag *>, mq_flags, mq_flags);
 
 %include "libsigrok/libsigrok.hpp"
+
+%include "enums.i"
 
 namespace sigrok {
 %include "libsigrok/enums.hpp"

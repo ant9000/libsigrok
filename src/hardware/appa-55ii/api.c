@@ -25,9 +25,12 @@ static const uint32_t scanopts[] = {
 	SR_CONF_SERIALCOMM,
 };
 
-static const uint32_t devopts[] = {
+static const uint32_t drvopts[] = {
 	SR_CONF_THERMOMETER,
-	SR_CONF_CONTINUOUS,
+};
+
+static const uint32_t devopts[] = {
+	SR_CONF_CONTINUOUS | SR_CONF_SET,
 	SR_CONF_LIMIT_SAMPLES | SR_CONF_GET | SR_CONF_SET,
 	SR_CONF_LIMIT_MSEC | SR_CONF_GET | SR_CONF_SET,
 	SR_CONF_DATA_SOURCE | SR_CONF_GET | SR_CONF_SET | SR_CONF_LIST,
@@ -96,26 +99,20 @@ static GSList *scan(GSList *options)
 
 	sr_info("Found device on port %s.", conn);
 
-	if (!(sdi = sr_dev_inst_new(SR_ST_INACTIVE, "APPA", "55II", NULL)))
-		goto scan_cleanup;
-
-	if (!(devc = g_try_malloc0(sizeof(struct dev_context)))) {
-		sr_err("Device context malloc failed.");
-		goto scan_cleanup;
-	}
-
+	sdi = g_malloc0(sizeof(struct sr_dev_inst));
+	sdi->status = SR_ST_INACTIVE;
+	sdi->vendor = g_strdup("APPA");
+	sdi->model = g_strdup("55II");
+	devc = g_malloc0(sizeof(struct dev_context));
 	devc->data_source = DEFAULT_DATA_SOURCE;
-
 	sdi->inst_type = SR_INST_SERIAL;
 	sdi->conn = serial;
 	sdi->priv = devc;
 	sdi->driver = di;
 
-	if (!(ch = sr_channel_new(0, SR_CHANNEL_ANALOG, TRUE, "T1")))
-		goto scan_cleanup;
+	ch = sr_channel_new(0, SR_CHANNEL_ANALOG, TRUE, "T1");
 	sdi->channels = g_slist_append(sdi->channels, ch);
-	if (!(ch = sr_channel_new(0, SR_CHANNEL_ANALOG, TRUE, "T2")))
-		goto scan_cleanup;
+	ch = sr_channel_new(0, SR_CHANNEL_ANALOG, TRUE, "T2");
 	sdi->channels = g_slist_append(sdi->channels, ch);
 
 	drvc->instances = g_slist_append(drvc->instances, sdi);
@@ -217,8 +214,12 @@ static int config_list(uint32_t key, GVariant **data, const struct sr_dev_inst *
 				scanopts, ARRAY_SIZE(scanopts), sizeof(uint32_t));
 		break;
 	case SR_CONF_DEVICE_OPTIONS:
-		*data = g_variant_new_fixed_array(G_VARIANT_TYPE_UINT32,
-				devopts, ARRAY_SIZE(devopts), sizeof(uint32_t));
+		if (!sdi)
+			*data = g_variant_new_fixed_array(G_VARIANT_TYPE_UINT32,
+					drvopts, ARRAY_SIZE(drvopts), sizeof(uint32_t));
+		else
+			*data = g_variant_new_fixed_array(G_VARIANT_TYPE_UINT32,
+					devopts, ARRAY_SIZE(devopts), sizeof(uint32_t));
 		break;
 	case SR_CONF_DATA_SOURCE:
 		*data = g_variant_new_strv(data_sources, ARRAY_SIZE(data_sources));

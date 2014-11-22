@@ -75,23 +75,17 @@ static GSList *brymen_scan(const char *conn, const char *serialcomm)
 
 	sr_info("Found device on port %s.", conn);
 
-	if (!(sdi = sr_dev_inst_new(SR_ST_INACTIVE, "Brymen", "BM85x", NULL)))
-		goto scan_cleanup;
-
-	if (!(devc = g_try_malloc0(sizeof(struct dev_context)))) {
-		sr_err("Device context malloc failed.");
-		goto scan_cleanup;
-	}
-
+	sdi = g_malloc0(sizeof(struct sr_dev_inst));
+	sdi->status = SR_ST_INACTIVE;
+	sdi->vendor = g_strdup("Brymen");
+	sdi->model = g_strdup("BM85x");
+	devc = g_malloc0(sizeof(struct dev_context));
 	sdi->inst_type = SR_INST_SERIAL;
 	sdi->conn = serial;
 	drvc = di->priv;
 	sdi->priv = devc;
 	sdi->driver = di;
-
-	if (!(ch = sr_channel_new(0, SR_CHANNEL_ANALOG, TRUE, "P1")))
-		goto scan_cleanup;
-
+	ch = sr_channel_new(0, SR_CHANNEL_ANALOG, TRUE, "P1");
 	sdi->channels = g_slist_append(sdi->channels, ch);
 	drvc->instances = g_slist_append(drvc->instances, sdi);
 	devices = g_slist_append(devices, sdi);

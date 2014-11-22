@@ -25,9 +25,12 @@ static const uint32_t scanopts[] = {
 	SR_CONF_SERIALCOMM,
 };
 
-static const uint32_t devopts[] = {
+static const uint32_t drvopts[] = {
 	SR_CONF_THERMOMETER,
-	SR_CONF_CONTINUOUS,
+};
+
+static const uint32_t devopts[] = {
+	SR_CONF_CONTINUOUS | SR_CONF_SET,
 	SR_CONF_LIMIT_SAMPLES | SR_CONF_SET,
 	SR_CONF_LIMIT_MSEC | SR_CONF_SET,
 };
@@ -85,32 +88,25 @@ static GSList *center_scan(const char *conn, const char *serialcomm, int idx)
 
 	sr_info("Found device on port %s.", conn);
 
-	if (!(sdi = sr_dev_inst_new(SR_ST_INACTIVE, center_devs[idx].vendor,
-				    center_devs[idx].device, NULL)))
-		goto scan_cleanup;
-
-	if (!(devc = g_try_malloc0(sizeof(struct dev_context)))) {
-		sr_err("Device context malloc failed.");
-		goto scan_cleanup;
-	}
-
+	sdi = g_malloc0(sizeof(struct sr_dev_inst));
+	sdi->status = SR_ST_INACTIVE;
+	sdi->vendor = g_strdup(center_devs[idx].vendor);
+	sdi->model = g_strdup(center_devs[idx].device);
+	devc = g_malloc0(sizeof(struct dev_context));
 	sdi->inst_type = SR_INST_SERIAL;
 	sdi->conn = serial;
-
 	sdi->priv = devc;
 	sdi->driver = center_devs[idx].di;
 
 	for (i = 0; i <  center_devs[idx].num_channels; i++) {
-		if (!(ch = sr_channel_new(i, SR_CHANNEL_ANALOG,
-					   TRUE, channel_names[i])))
-			goto scan_cleanup;
+		ch = sr_channel_new(i, SR_CHANNEL_ANALOG,
+				    TRUE, channel_names[i]);
 		sdi->channels = g_slist_append(sdi->channels, ch);
 	}
 
 	drvc->instances = g_slist_append(drvc->instances, sdi);
 	devices = g_slist_append(devices, sdi);
 
-scan_cleanup:
 	serial_close(serial);
 
 	return devices;
@@ -191,7 +187,6 @@ static int config_set(uint32_t key, GVariant *data, const struct sr_dev_inst *sd
 static int config_list(uint32_t key, GVariant **data, const struct sr_dev_inst *sdi,
 		const struct sr_channel_group *cg)
 {
-	(void)sdi;
 	(void)cg;
 
 	switch (key) {
@@ -200,7 +195,11 @@ static int config_list(uint32_t key, GVariant **data, const struct sr_dev_inst *
 				scanopts, ARRAY_SIZE(scanopts), sizeof(uint32_t));
 		break;
 	case SR_CONF_DEVICE_OPTIONS:
-		*data = g_variant_new_fixed_array(G_VARIANT_TYPE_UINT32,
+		if (!sdi)
+			*data = g_variant_new_fixed_array(G_VARIANT_TYPE_UINT32,
+				drvopts, ARRAY_SIZE(drvopts), sizeof(uint32_t));
+		else
+			*data = g_variant_new_fixed_array(G_VARIANT_TYPE_UINT32,
 				devopts, ARRAY_SIZE(devopts), sizeof(uint32_t));
 		break;
 	default:

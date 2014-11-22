@@ -43,6 +43,12 @@ SR_PRIV int lps_query_status(struct sr_dev_inst* sdi);
 
 #define VENDOR_MOTECH "Motech"
 
+/** Driver capabilities generic. */
+static const uint32_t drvopts[] = {
+	/* Device class */
+	SR_CONF_POWER_SUPPLY,
+};
+
 /** Driver scanning options. */
 static const uint32_t scanopts[] = {
 	SR_CONF_CONN,
@@ -375,9 +381,9 @@ static GSList *do_scan(lps_modelid modelid, struct sr_dev_driver *drv, GSList *o
 	GSList *devices;
 	const char *conn, *serialcomm;
 	int cnt;
-	gchar  buf[LINELEN_MAX];
+	gchar buf[LINELEN_MAX];
 	gchar channel[10];
-	char*  verstr;
+	char *verstr;
 
 	sdi = NULL;
 	devc = NULL;
@@ -444,7 +450,11 @@ static GSList *do_scan(lps_modelid modelid, struct sr_dev_driver *drv, GSList *o
 		Therefore just print an error message, but do not exit with error. */
 		sr_err("Failed to query for hardware version: %d %s", errno, strerror(errno));
 
-	sdi = sr_dev_inst_new(SR_ST_INACTIVE, VENDOR_MOTECH, models[modelid].modelstr, verstr);
+	sdi = g_malloc0(sizeof(struct sr_dev_inst));
+	sdi->status = SR_ST_INACTIVE;
+	sdi->vendor = g_strdup(VENDOR_MOTECH);
+	sdi->model = g_strdup(models[modelid].modelstr);
+	sdi->version = g_strdup(verstr);
 	sdi->driver = drv;
 	sdi->inst_type = SR_INST_SERIAL;
 	sdi->conn = serial;
@@ -733,6 +743,12 @@ static int config_list(uint32_t key, GVariant **data, const struct sr_dev_inst *
 	case SR_CONF_SCAN_OPTIONS:
 		*data = g_variant_new_fixed_array(G_VARIANT_TYPE_UINT32,
 						  scanopts, ARRAY_SIZE(scanopts), sizeof(uint32_t));
+		return SR_OK;
+	case SR_CONF_DEVICE_OPTIONS:
+		if (sdi != NULL)
+			break;
+		*data = g_variant_new_fixed_array(G_VARIANT_TYPE_UINT32,
+				drvopts, ARRAY_SIZE(drvopts), sizeof(uint32_t));
 		return SR_OK;
 	default:
 		if (sdi == NULL)

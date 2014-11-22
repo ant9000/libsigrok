@@ -170,8 +170,9 @@ SR_API int sr_session_load(const char *filename, struct sr_session **session)
 			for (j = 0; keys[j]; j++) {
 				val = g_key_file_get_string(kf, sections[i], keys[j], NULL);
 				if (!strcmp(keys[j], "capturefile")) {
-					sdi = sr_dev_inst_new(SR_ST_ACTIVE, NULL, NULL, NULL);
+					sdi = g_malloc0(sizeof(struct sr_dev_inst));
 					sdi->driver = &session_driver;
+					sdi->status = SR_ST_ACTIVE;
 					if (!session_driver_initialized) {
 						/* first device, init the driver */
 						session_driver_initialized = 1;
@@ -212,9 +213,8 @@ SR_API int sr_session_load(const char *filename, struct sr_session **session)
 							g_variant_new_uint64(total_channels), sdi, NULL);
 					for (p = 0; p < total_channels; p++) {
 						snprintf(channelname, SR_MAX_CHANNELNAME_LEN, "%" PRIu64, p);
-						if (!(ch = sr_channel_new(p, SR_CHANNEL_LOGIC, TRUE,
-								channelname)))
-							return SR_ERR;
+						ch = sr_channel_new(p, SR_CHANNEL_LOGIC, TRUE,
+								channelname);
 						sdi->channels = g_slist_append(sdi->channels, ch);
 					}
 				} else if (!strncmp(keys[j], "probe", 5)) {

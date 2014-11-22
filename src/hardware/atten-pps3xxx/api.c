@@ -36,9 +36,12 @@ static const uint32_t scanopts[] = {
 	SR_CONF_SERIALCOMM,
 };
 
-static const uint32_t devopts[] = {
+static const uint32_t drvopts[] = {
 	SR_CONF_POWER_SUPPLY,
-	SR_CONF_CONTINUOUS,
+};
+
+static const uint32_t devopts[] = {
+	SR_CONF_CONTINUOUS | SR_CONF_SET,
 	SR_CONF_OUTPUT_CHANNEL_CONFIG | SR_CONF_GET | SR_CONF_SET | SR_CONF_LIST,
 	SR_CONF_OVER_CURRENT_PROTECTION_ENABLED | SR_CONF_GET | SR_CONF_SET,
 };
@@ -161,7 +164,10 @@ static GSList *scan(GSList *options, int modelid)
 		return NULL;
 	}
 
-	sdi = sr_dev_inst_new(SR_ST_INACTIVE, "Atten", model->name, NULL);
+	sdi = g_malloc0(sizeof(struct sr_dev_inst));
+	sdi->status = SR_ST_INACTIVE;
+	sdi->vendor = g_strdup("Atten");
+	sdi->model = g_strdup(model->name);
 	sdi->driver = di;
 	sdi->inst_type = SR_INST_SERIAL;
 	sdi->conn = serial;
@@ -368,17 +374,23 @@ static int config_list(uint32_t key, GVariant **data, const struct sr_dev_inst *
 	GVariantBuilder gvb;
 	int channel, ret, i;
 
-	/* Always available, even without sdi. */
+	/* Always available. */
 	if (key == SR_CONF_SCAN_OPTIONS) {
 		*data = g_variant_new_fixed_array(G_VARIANT_TYPE_UINT32,
 				scanopts, ARRAY_SIZE(scanopts), sizeof(uint32_t));
 		return SR_OK;
 	}
 
+	if (key == SR_CONF_DEVICE_OPTIONS && !sdi) {
+		*data = g_variant_new_fixed_array(G_VARIANT_TYPE_UINT32,
+				drvopts, ARRAY_SIZE(drvopts), sizeof(uint32_t));
+		return SR_OK;
+	}
+
 	if (!sdi)
 		return SR_ERR_ARG;
-	devc = sdi->priv;
 
+	devc = sdi->priv;
 	ret = SR_OK;
 	if (!cg) {
 		/* No channel group: global options. */

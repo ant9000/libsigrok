@@ -54,6 +54,22 @@ fi
 echo "Generating build system..."
 ${LIBTOOLIZE} --install --copy --quiet || exit 1
 aclocal ${ACLOCAL_DIR} || exit 1
+
+# Check the version of a specific autoconf macro that tends to cause problems.
+CXXMACROVERSION=$(
+	grep -B 5 'm4_define(\[_AX_CXX_COMPILE_STDCXX_11_testbody\]' aclocal.m4 |
+	sed -nr 's/.*serial[[:space:]]+([[:digit:]]+).*/\1/p'
+)
+if [ "x$CXXMACROVERSION" = "x" ]; then
+	echo "--- Warning: AX_CXX_COMPILE_STDCXX_11 macro not found."
+	echo "--- You won't be able to build the language bindings!"
+fi
+if [ "x$CXXMACROVERSION" != "x" ] && [ "$CXXMACROVERSION" -lt 4 ]; then
+	echo "--- Warning: AX_CXX_COMPILE_STDCXX_11 macro is too old."
+	echo "--- (found version $CXXMACROVERSION, at least 4 is required)"
+	echo "--- You won't be able to build the language bindings!"
+fi
+
 autoheader || exit 1
 automake --add-missing --copy || exit 1
 autoconf || exit 1

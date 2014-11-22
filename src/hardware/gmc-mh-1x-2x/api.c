@@ -223,25 +223,21 @@ static GSList *scan_1x_2x_rs232(GSList *options)
 
 	if (model != METRAHIT_NONE) {
 		sr_spew("%s %s detected!", VENDOR_GMC, gmc_model_str(model));
-		if (!(sdi = sr_dev_inst_new(SR_ST_INACTIVE, VENDOR_GMC,
-				gmc_model_str(model), NULL)))
-			return NULL;
-		if (!(devc = g_try_malloc0(sizeof(struct dev_context)))) {
-			sr_err("Device context malloc failed.");
-			return NULL;
-		}
+		sdi = g_malloc0(sizeof(struct sr_dev_inst));
+		sdi->status = SR_ST_INACTIVE;
+		sdi->vendor = g_strdup(VENDOR_GMC);
+		sdi->model = g_strdup(gmc_model_str(model));
+		devc = g_malloc0(sizeof(struct dev_context));
 		devc->model = model;
 		devc->limit_samples = 0;
 		devc->limit_msec = 0;
 		devc->num_samples = 0;
 		devc->elapsed_msec = g_timer_new();
 		devc->settings_ok = FALSE;
-
 		sdi->conn = serial;
 		sdi->priv = devc;
 		sdi->driver = &gmc_mh_1x_2x_rs232_driver_info;
-		if (!(ch = sr_channel_new(0, SR_CHANNEL_ANALOG, TRUE, "P1")))
-			return NULL;
+		ch = sr_channel_new(0, SR_CHANNEL_ANALOG, TRUE, "P1");
 		sdi->channels = g_slist_append(sdi->channels, ch);
 		drvc->instances = g_slist_append(drvc->instances, sdi);
 		devices = g_slist_append(devices, sdi);
@@ -298,14 +294,11 @@ static GSList *scan_2x_bd232(GSList *options)
 	if (serial_open(serial, SERIAL_RDWR) != SR_OK)
 		goto exit_err;
 
-	if (!(devc = g_try_malloc0(sizeof(struct dev_context)))) {
-		sr_err("Device context malloc failed.");
-		goto exit_err;
-	}
+	devc = g_malloc0(sizeof(struct dev_context));
 
-	if (!(sdi = sr_dev_inst_new(SR_ST_INACTIVE, VENDOR_GMC, NULL, NULL)))
-		goto exit_err;
-
+	sdi = g_malloc0(sizeof(struct sr_dev_inst));
+	sdi->status = SR_ST_INACTIVE;
+	sdi->vendor = g_strdup(VENDOR_GMC);
 	sdi->priv = devc;
 
 	/* Send message 03 "Query multimeter version and status" */
@@ -335,27 +328,20 @@ static GSList *scan_2x_bd232(GSList *options)
 
 		if (devc->model != METRAHIT_NONE) {
 			sr_spew("%s %s detected!", VENDOR_GMC, gmc_model_str(devc->model));
-
 			devc->elapsed_msec = g_timer_new();
-
 			sdi->model = g_strdup(gmc_model_str(devc->model));
 			sdi->version = g_strdup_printf("Firmware %d.%d", devc->fw_ver_maj, devc->fw_ver_min);
 			sdi->conn = serial;
 			sdi->priv = devc;
 			sdi->driver = &gmc_mh_2x_bd232_driver_info;
-			if (!(ch = sr_channel_new(0, SR_CHANNEL_ANALOG, TRUE, "P1")))
-				goto exit_err;
+			ch = sr_channel_new(0, SR_CHANNEL_ANALOG, TRUE, "P1");
 			sdi->channels = g_slist_append(sdi->channels, ch);
 			drvc->instances = g_slist_append(drvc->instances, sdi);
 			devices = g_slist_append(devices, sdi);
-
-			if (!(devc = g_try_malloc0(sizeof(struct dev_context)))) {
-				sr_err("Device context malloc failed.");
-				goto exit_err;
-			}
-
-			if (!(sdi = sr_dev_inst_new(SR_ST_INACTIVE, VENDOR_GMC, NULL, NULL)))
-				goto exit_err;
+			devc = g_malloc0(sizeof(struct dev_context));
+			sdi = g_malloc0(sizeof(struct sr_dev_inst));
+			sdi->status = SR_ST_INACTIVE;
+			sdi->vendor = g_strdup(VENDOR_GMC);
 		}
 	};
 

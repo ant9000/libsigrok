@@ -783,9 +783,7 @@ static int add_channel(struct sr_dev_inst *sdi, const char *name)
 {
 	struct sr_channel *ch;
 
-	if (!(ch = sr_channel_new(0, SR_CHANNEL_ANALOG, TRUE, name)))
-		return SR_ERR;
-
+	ch = sr_channel_new(0, SR_CHANNEL_ANALOG, TRUE, name);
 	sdi->channels = g_slist_append(sdi->channels, ch);
 
 	return SR_OK;
@@ -843,13 +841,11 @@ SR_PRIV struct sr_dev_inst *es51919_serial_scan(GSList *options,
 
 	sr_info("Found device on port %s.", serial->port);
 
-	if (!(sdi = sr_dev_inst_new(SR_ST_INACTIVE, vendor, model, NULL)))
-		goto scan_cleanup;
-
-	if (!(devc = g_try_malloc0(sizeof(struct dev_context)))) {
-		sr_err("Device context malloc failed.");
-		goto scan_cleanup;
-	}
+	sdi = g_malloc0(sizeof(struct sr_dev_inst));
+	sdi->status = SR_ST_INACTIVE;
+	sdi->vendor = g_strdup(vendor);
+	sdi->model = g_strdup(model);
+	devc = g_malloc0(sizeof(struct dev_context));
 
 	if (!(devc->buf = dev_buffer_new(PACKET_SIZE * 8)))
 		goto scan_cleanup;

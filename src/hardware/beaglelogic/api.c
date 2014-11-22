@@ -65,12 +65,11 @@ static int init(struct sr_context *sr_ctx)
 	return std_init(sr_ctx, di, LOG_PREFIX);
 }
 
-static struct dev_context * beaglelogic_devc_alloc(void)
+static struct dev_context *beaglelogic_devc_alloc(void)
 {
 	struct dev_context *devc;
 
-	/* Allocate zeroed structure */
-	devc = g_try_malloc0(sizeof(*devc));
+	devc = g_malloc0(sizeof(struct dev_context));
 
 	/* Default non-zero values (if any) */
 	devc->fd = -1;
@@ -97,7 +96,10 @@ static GSList *scan(GSList *options)
 	if (!g_file_test(BEAGLELOGIC_DEV_NODE, G_FILE_TEST_EXISTS))
 		return NULL;
 
-	sdi = sr_dev_inst_new(SR_ST_INACTIVE, NULL, "BeagleLogic", "1.0");
+	sdi = g_malloc0(sizeof(struct sr_dev_inst));
+	sdi->status = SR_ST_INACTIVE;
+	sdi->model = g_strdup("BeagleLogic");
+	sdi->version = g_strdup("1.0");
 	sdi->driver = di;
 
 	/* Unless explicitly specified, keep max channels to 8 only */
@@ -134,9 +136,8 @@ static GSList *scan(GSList *options)
 
 	/* Fill the channels */
 	for (i = 0; i < maxch; i++) {
-		if (!(ch = sr_channel_new(i, SR_CHANNEL_LOGIC, TRUE,
-				beaglelogic_channel_names[i])))
-			return NULL;
+		ch = sr_channel_new(i, SR_CHANNEL_LOGIC, TRUE,
+				beaglelogic_channel_names[i]);
 		sdi->channels = g_slist_append(sdi->channels, ch);
 	}
 

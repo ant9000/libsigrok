@@ -26,6 +26,11 @@
 
 #include "protocol.h"
 
+static const uint32_t drvopts[] = {
+	/* Device class */
+	SR_CONF_POWER_SUPPLY,
+};
+
 static const uint32_t scanopts[] = {
 	SR_CONF_CONN,
 	SR_CONF_SERIALCOMM,
@@ -150,20 +155,15 @@ static GSList *scan(GSList *options)
 	}
 
 	/* Init device instance, etc. */
-	if (!(sdi = sr_dev_inst_new(SR_ST_INACTIVE, "Manson",
-				    models[model_id].name, NULL))) {
-		sr_err("Failed to create device instance.");
-		return NULL;
-	}
-
+	sdi = g_malloc0(sizeof(struct sr_dev_inst));
+	sdi->status = SR_ST_INACTIVE;
+	sdi->vendor = g_strdup("Manson");
+	sdi->model = g_strdup(models[model_id].name);
 	sdi->inst_type = SR_INST_SERIAL;
 	sdi->conn = serial;
 	sdi->driver = di;
 
-	if (!(ch = sr_channel_new(0, SR_CHANNEL_ANALOG, TRUE, "CH1"))) {
-		sr_err("Failed to create channel.");
-		goto exit_err;
-	}
+	ch = sr_channel_new(0, SR_CHANNEL_ANALOG, TRUE, "CH1");
 	sdi->channels = g_slist_append(sdi->channels, ch);
 
 	devc = g_malloc0(sizeof(struct dev_context));
@@ -330,6 +330,12 @@ static int config_list(uint32_t key, GVariant **data, const struct sr_dev_inst *
 	int idx;
 
 	(void)cg;
+
+	if (key == SR_CONF_DEVICE_OPTIONS && !sdi) {
+		*data = g_variant_new_fixed_array(G_VARIANT_TYPE_UINT32,
+				drvopts, ARRAY_SIZE(drvopts), sizeof(uint32_t));
+		return SR_OK;
+	}
 
 	if (!sdi)
 		return SR_ERR_ARG;

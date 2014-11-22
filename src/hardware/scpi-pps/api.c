@@ -30,6 +30,10 @@ static const uint32_t scanopts[] = {
 	SR_CONF_SERIALCOMM,
 };
 
+static const uint32_t drvopts[] = {
+	SR_CONF_POWER_SUPPLY,
+};
+
 static struct pps_channel_instance pci[] = {
 	{ SR_MQ_VOLTAGE, SCPI_CMD_GET_MEAS_VOLTAGE, "V" },
 	{ SR_MQ_CURRENT, SCPI_CMD_GET_MEAS_CURRENT, "I" },
@@ -85,8 +89,11 @@ static struct sr_dev_inst *probe_device(struct sr_scpi_dev_inst *scpi)
 		return NULL;
 	}
 
-	sdi = sr_dev_inst_new(SR_ST_ACTIVE, vendor, hw_info->model,
-			hw_info->firmware_version);
+	sdi = g_malloc0(sizeof(struct sr_dev_inst));
+	sdi->status = SR_ST_ACTIVE;
+	sdi->vendor = g_strdup(vendor);
+	sdi->model = g_strdup(hw_info->model);
+	sdi->version = g_strdup(hw_info->firmware_version);
 	sdi->conn = scpi;
 	sdi->driver = di;
 	sdi->inst_type = SR_INST_SCPI;
@@ -423,6 +430,10 @@ static int config_list(uint32_t key, GVariant **data, const struct sr_dev_inst *
 	if (key == SR_CONF_SCAN_OPTIONS) {
 		*data = g_variant_new_fixed_array(G_VARIANT_TYPE_UINT32,
 				scanopts, ARRAY_SIZE(scanopts), sizeof(uint32_t));
+		return SR_OK;
+	} else if (key == SR_CONF_DEVICE_OPTIONS && !sdi) {
+		*data = g_variant_new_fixed_array(G_VARIANT_TYPE_UINT32,
+				drvopts, ARRAY_SIZE(drvopts), sizeof(uint32_t));
 		return SR_OK;
 	}
 

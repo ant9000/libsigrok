@@ -46,6 +46,7 @@ which provides access to the error code and description."
 
 %{
 #include <pygobject.h>
+#include <numpy/arrayobject.h>
 
 PyObject *GLib;
 PyTypeObject *IOChannel;
@@ -66,6 +67,7 @@ typedef guint pyg_flags_type;
     GLib = PyImport_ImportModule("gi.repository.GLib");
     IOChannel = (PyTypeObject *) PyObject_GetAttrString(GLib, "IOChannel");
     PollFD = (PyTypeObject *) PyObject_GetAttrString(GLib, "PollFD");
+    import_array();
 %}
 
 /* Map file objects to file descriptors. */
@@ -173,14 +175,28 @@ typedef guint pyg_flags_type;
         Py_XDECREF(arglist);
         Py_XDECREF(revents_obj);
 
-        if (PyErr_Occurred() || !PyBool_Check(result))
-            throw sigrok::Error(SR_ERR);
+        bool completed = !PyErr_Occurred();
 
-        bool retval = (result == Py_True);
+        if (!completed)
+            PyErr_Print();
+
+        bool valid_result = (completed && PyBool_Check(result));
+
+        if (completed && !valid_result)
+        {
+            PyErr_SetString(PyExc_TypeError,
+                "EventSource callback did not return a boolean");
+            PyErr_Print();
+        }
+
+        bool retval = (valid_result && result == Py_True);
 
         Py_XDECREF(result);
 
         PyGILState_Release(gstate);
+
+        if (!valid_result)
+            throw sigrok::Error(SR_ERR);
 
         return retval;
     };
@@ -212,9 +228,27 @@ typedef guint pyg_flags_type;
         Py_XDECREF(arglist);
         Py_XDECREF(log_obj);
         Py_XDECREF(string_obj);
+
+        bool completed = !PyErr_Occurred();
+
+        if (!completed)
+            PyErr_Print();
+
+        bool valid_result = (completed && result == Py_None);
+
         Py_XDECREF(result);
 
+        if (completed && !valid_result)
+        {
+            PyErr_SetString(PyExc_TypeError,
+                "Log callback did not return None");
+            PyErr_Print();
+        }
+
         PyGILState_Release(gstate);
+
+        if (!valid_result)
+            throw sigrok::Error(SR_ERR);
     };
 
     Py_XINCREF($input);
@@ -248,12 +282,73 @@ typedef guint pyg_flags_type;
         Py_XDECREF(arglist);
         Py_XDECREF(device_obj);
         Py_XDECREF(packet_obj);
+
+        bool completed = !PyErr_Occurred();
+
+        if (!completed)
+            PyErr_Print();
+
+        bool valid_result = (completed && result == Py_None);
+
         Py_XDECREF(result);
 
+        if (completed && !valid_result)
+        {
+            PyErr_SetString(PyExc_TypeError,
+                "Datafeed callback did not return None");
+            PyErr_Print();
+        }
+
         PyGILState_Release(gstate);
+
+        if (!valid_result)
+            throw sigrok::Error(SR_ERR);
     };
 
     Py_XINCREF($input);
+}
+
+/* Cast PacketPayload pointers to correct subclass type. */
+%ignore sigrok::Packet::payload;
+
+%extend sigrok::Packet
+{
+    std::shared_ptr<sigrok::Header> _payload_header()
+    {
+        return dynamic_pointer_cast<sigrok::Header>($self->payload());
+    }
+    std::shared_ptr<sigrok::Meta> _payload_meta()
+    {
+        return dynamic_pointer_cast<sigrok::Meta>($self->payload());
+    }
+    std::shared_ptr<sigrok::Analog> _payload_analog()
+    {
+        return dynamic_pointer_cast<sigrok::Analog>($self->payload());
+    }
+    std::shared_ptr<sigrok::Logic> _payload_logic()
+    {
+        return dynamic_pointer_cast<sigrok::Logic>($self->payload());
+    }
+}
+
+%extend sigrok::Packet
+{
+%pythoncode
+{
+    def _payload(self):
+        if self.type == PacketType.HEADER:
+            return self._payload_header()
+        elif self.type == PacketType.META:
+            return self._payload_meta()
+        elif self.type == PacketType.LOGIC:
+            return self._payload_logic()
+        elif self.type == PacketType.ANALOG:
+            return self._payload_analog()
+        else:
+            return None
+
+    payload = property(_payload)
+}
 }
 
 %{
@@ -287,7 +382,7 @@ std::map<std::string, std::string> dict_to_map_string(PyObject *dict)
 /* Convert from a Python type to Glib::Variant, according to config key data type. */
 Glib::VariantBase python_to_variant_by_key(PyObject *input, const sigrok::ConfigKey *key)
 {
-    enum sr_datatype type = key->data_type()->id();
+    enum sr_datatype type = (enum sr_datatype) key->data_type()->id();
 
     if (type == SR_T_UINT64 && PyInt_Check(input))
         return Glib::Variant<guint64>::create(PyInt_AsLong(input));
@@ -353,11 +448,53 @@ std::map<std::string, Glib::VariantBase> dict_to_map_options(PyObject *dict,
 %}
 
 /* Ignore these methods, we will override them below. */
+%ignore sigrok::Analog::data;
 %ignore sigrok::Driver::scan;
 %ignore sigrok::InputFormat::create_input;
 %ignore sigrok::OutputFormat::create_output;
 
 %include "doc.i"
+
+%define %attributevector(Class, Type, Name, Get)
+%rename(_ ## Get) sigrok::Class::Get;
+%extend sigrok::Class
+{
+%pythoncode
+{
+  Name = property(_ ## Get)
+}
+}
+%enddef
+
+%define %attributemap(Class, Type, Name, Get)
+%rename(_ ## Get) sigrok::Class::Get;
+%extend sigrok::Class
+{
+%pythoncode
+{
+  Name = property(fget = lambda x: x._ ## Get().asdict(), doc=_ ## Get.__doc__)
+}
+}
+%enddef
+
+%define %enumextras(Class)
+%extend sigrok::Class
+{
+  long __hash__()
+  {
+    return (long) $self;
+  }
+
+%pythoncode
+{
+  def __eq__(self, other):
+    return (type(self) is type(other) and hash(self) == hash(other))
+
+  def __ne__(self, other):
+    return (type(self) is not type(other) or hash(self) != hash(other))
+}
+}
+%enddef
 
 %include "../../../swig/classes.i"
 
@@ -377,7 +514,7 @@ std::map<std::string, Glib::VariantBase> dict_to_map_options(PyObject *dict,
         {
             if (!PyString_Check(py_key))
                 throw sigrok::Error(SR_ERR_ARG);
-            auto key = sigrok::ConfigKey::get(PyString_AsString(py_key));
+            auto key = sigrok::ConfigKey::get_by_identifier(PyString_AsString(py_key));
             auto value = python_to_variant_by_key(py_value, key);
             options[key] = value;
         }
@@ -438,4 +575,24 @@ std::map<std::string, Glib::VariantBase> dict_to_map_options(PyObject *dict,
     {
         $self->config_set(key, python_to_variant_by_key(input, key));
     }
+}
+
+/* Return NumPy array from Analog::data(). */
+%extend sigrok::Analog
+{
+    PyObject * _data()
+    {
+        int nd = 2;
+        npy_intp dims[2];
+        dims[0] = $self->channels().size();
+        dims[1] = $self->num_samples();
+        int typenum = NPY_FLOAT;
+        void *data = $self->data_pointer();
+        return PyArray_SimpleNewFromData(nd, dims, typenum, data);
+    }
+
+%pythoncode
+{
+    data = property(_data)
+}
 }

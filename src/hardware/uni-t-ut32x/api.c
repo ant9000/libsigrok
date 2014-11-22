@@ -79,25 +79,19 @@ static GSList *scan(GSList *options)
 		/* We have a list of sr_usb_dev_inst matching the connection
 		 * string. Wrap them in sr_dev_inst and we're done. */
 		for (l = usb_devices; l; l = l->next) {
-			if (!(sdi = sr_dev_inst_new(SR_ST_INACTIVE, VENDOR,
-					MODEL, NULL)))
-				return NULL;
+			sdi = g_malloc0(sizeof(struct sr_dev_inst));
+			sdi->status = SR_ST_INACTIVE;
+			sdi->vendor = g_strdup(VENDOR);
+			sdi->model = g_strdup(MODEL);
 			sdi->driver = di;
 			sdi->inst_type = SR_INST_USB;
 			sdi->conn = l->data;
 			for (i = 0; i < 3; i++) {
-				if (!(ch = sr_channel_new(i, SR_CHANNEL_ANALOG, TRUE,
-						channels[i]))) {
-					sr_dbg("Channel malloc failed.");
-					return NULL;
-				}
+				ch = sr_channel_new(i, SR_CHANNEL_ANALOG, TRUE,
+						channels[i]);
 				sdi->channels = g_slist_append(sdi->channels, ch);
 			}
-
-			if (!(devc = g_try_malloc(sizeof(struct dev_context)))) {
-				sr_dbg("Device context malloc failed.");
-				return NULL;
-			}
+			devc = g_malloc0(sizeof(struct dev_context));
 			sdi->priv = devc;
 			devc->limit_samples = 0;
 			devc->data_source = DEFAULT_DATA_SOURCE;

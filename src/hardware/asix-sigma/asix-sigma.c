@@ -71,8 +71,11 @@ static const char *channel_names[] = {
 	"9", "10", "11", "12", "13", "14", "15", "16",
 };
 
-static const uint32_t devopts[] = {
+static const uint32_t drvopts[] = {
 	SR_CONF_LOGIC_ANALYZER,
+};
+
+static const uint32_t devopts[] = {
 	SR_CONF_LIMIT_MSEC | SR_CONF_GET | SR_CONF_SET,
 	SR_CONF_LIMIT_SAMPLES | SR_CONF_SET,
 	SR_CONF_SAMPLERATE | SR_CONF_GET | SR_CONF_SET | SR_CONF_LIST,
@@ -338,10 +341,7 @@ static GSList *scan(GSList *options)
 
 	devices = NULL;
 
-	if (!(devc = g_try_malloc(sizeof(struct dev_context)))) {
-		sr_err("%s: devc malloc failed", __func__);
-		return NULL;
-	}
+	devc = g_malloc0(sizeof(struct dev_context));
 
 	ftdi_init(&devc->ftdic);
 
@@ -377,18 +377,15 @@ static GSList *scan(GSList *options)
 	devc->use_triggers = 0;
 
 	/* Register SIGMA device. */
-	if (!(sdi = sr_dev_inst_new(SR_ST_INITIALIZING, USB_VENDOR_NAME,
-				    USB_MODEL_NAME, NULL))) {
-		sr_err("%s: sdi was NULL", __func__);
-		goto free;
-	}
+	sdi = g_malloc0(sizeof(struct sr_dev_inst));
+	sdi->status = SR_ST_INITIALIZING;
+	sdi->vendor = g_strdup(USB_VENDOR_NAME);
+	sdi->model = g_strdup(USB_MODEL_NAME);
 	sdi->driver = di;
 
 	for (i = 0; i < ARRAY_SIZE(channel_names); i++) {
 		ch = sr_channel_new(i, SR_CHANNEL_LOGIC, TRUE,
 				    channel_names[i]);
-		if (!ch)
-			return NULL;
 		sdi->channels = g_slist_append(sdi->channels, ch);
 	}
 
@@ -897,8 +894,12 @@ static int config_list(uint32_t key, GVariant **data, const struct sr_dev_inst *
 
 	switch (key) {
 	case SR_CONF_DEVICE_OPTIONS:
-		*data = g_variant_new_fixed_array(G_VARIANT_TYPE_UINT32,
-				devopts, ARRAY_SIZE(devopts), sizeof(uint32_t));
+		if (!sdi)
+			*data = g_variant_new_fixed_array(G_VARIANT_TYPE_UINT32,
+					drvopts, ARRAY_SIZE(drvopts), sizeof(uint32_t));
+		else
+			*data = g_variant_new_fixed_array(G_VARIANT_TYPE_UINT32,
+					devopts, ARRAY_SIZE(devopts), sizeof(uint32_t));
 		break;
 	case SR_CONF_SAMPLERATE:
 		g_variant_builder_init(&gvb, G_VARIANT_TYPE("a{sv}"));

@@ -94,16 +94,15 @@ static GSList *scan(GSList *options)
 
 	sr_spew("Conrad DIGI 35 CPU assumed at %s.", conn);
 
-	if (!(sdi = sr_dev_inst_new(SR_ST_ACTIVE, "Conrad", "DIGI 35 CPU", NULL)))
-		return NULL;
-
+	sdi = g_malloc0(sizeof(struct sr_dev_inst));
+	sdi->status = SR_ST_ACTIVE;
+	sdi->vendor = g_strdup("Conrad");
+	sdi->model = g_strdup("DIGI 35 CPU");
 	sdi->conn = serial;
 	sdi->priv = NULL;
 	sdi->driver = di;
-	if (!(ch = sr_channel_new(0, SR_CHANNEL_ANALOG, TRUE, "CH1")))
-		return NULL;
+	ch = sr_channel_new(0, SR_CHANNEL_ANALOG, TRUE, "CH1");
 	sdi->channels = g_slist_append(sdi->channels, ch);
-
 	drvc->instances = g_slist_append(drvc->instances, sdi);
 	devices = g_slist_append(devices, sdi);
 

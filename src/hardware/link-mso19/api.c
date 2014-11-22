@@ -178,10 +178,7 @@ static GSList *scan(GSList *options)
 
 		//Create the device context and set its params
 		struct dev_context *devc;
-		if (!(devc = g_try_malloc0(sizeof(struct dev_context)))) {
-			sr_err("Device context malloc failed.");
-			return devices;
-		}
+		devc = g_malloc0(sizeof(struct dev_context));
 
 		if (mso_parse_serial(iSerial, iProduct, devc) != SR_OK) {
 			sr_err("Invalid iSerial: %s.", iSerial);
@@ -203,8 +200,11 @@ static GSList *scan(GSList *options)
 			return devices;
 		}
 
-		struct sr_dev_inst *sdi = sr_dev_inst_new(SR_ST_INACTIVE,
-						manufacturer, product, hwrev);
+		struct sr_dev_inst *sdi = g_malloc0(sizeof(struct sr_dev_inst));
+		sdi->status = SR_ST_INACTIVE;
+		sdi->vendor = g_strdup(manufacturer);
+		sdi->model = g_strdup(product);
+		sdi->version = g_strdup(hwrev);
 
 		if (!sdi) {
 			sr_err("Unable to create device instance for %s",
@@ -220,9 +220,8 @@ static GSList *scan(GSList *options)
 		for (i = 0; i < NUM_CHANNELS; i++) {
 			struct sr_channel *ch;
 			chtype = (i == 0) ? SR_CHANNEL_ANALOG : SR_CHANNEL_LOGIC;
-			if (!(ch = sr_channel_new(i, chtype, TRUE,
-						   mso19_channel_names[i])))
-				return 0;
+			ch = sr_channel_new(i, chtype, TRUE,
+					    mso19_channel_names[i]);
 			sdi->channels = g_slist_append(sdi->channels, ch);
 		}
 

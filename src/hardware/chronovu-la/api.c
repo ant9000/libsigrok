@@ -87,7 +87,7 @@ static int add_device(int idx, int model, GSList **devices)
 	drvc = di->priv;
 
 	/* Allocate memory for our private device context. */
-	devc = g_try_malloc(sizeof(struct dev_context));
+	devc = g_malloc0(sizeof(struct dev_context));
 
 	/* Set some sane defaults. */
 	devc->prof = &cv_profiles[model];
@@ -120,22 +120,16 @@ static int add_device(int idx, int model, GSList **devices)
 	devc->cur_samplerate = devc->prof->max_samplerate;
 
 	/* Register the device with libsigrok. */
-	sdi = sr_dev_inst_new(SR_ST_INITIALIZING,
-			      "ChronoVu", devc->prof->modelname, NULL);
-	if (!sdi) {
-		sr_err("Failed to create device instance.");
-		ret = SR_ERR;
-		goto err_free_final_buf;
-	}
+	sdi = g_malloc0(sizeof(struct sr_dev_inst));
+	sdi->status = SR_ST_INITIALIZING;
+	sdi->vendor = g_strdup("ChronoVu");
+	sdi->model = g_strdup(devc->prof->modelname);
 	sdi->driver = di;
 	sdi->priv = devc;
 
 	for (i = 0; i < devc->prof->num_channels; i++) {
-		if (!(ch = sr_channel_new(i, SR_CHANNEL_LOGIC, TRUE,
-					  cv_channel_names[i]))) {
-			ret = SR_ERR;
-			goto err_free_dev_inst;
-		}
+		ch = sr_channel_new(i, SR_CHANNEL_LOGIC, TRUE,
+				    cv_channel_names[i]);
 		sdi->channels = g_slist_append(sdi->channels, ch);
 	}
 
@@ -145,10 +139,6 @@ static int add_device(int idx, int model, GSList **devices)
 	if (ret == SR_OK)
 		return SR_OK;
 
-err_free_dev_inst:
-	sr_dev_inst_free(sdi);
-err_free_final_buf:
-	g_free(devc->final_buf);
 err_free_devc:
 	g_free(devc);
 

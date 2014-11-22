@@ -32,9 +32,12 @@ static const uint32_t scanopts[] = {
 	SR_CONF_SERIALCOMM,
 };
 
-static const uint32_t devopts[] = {
+static const uint32_t drvopts[] = {
 	SR_CONF_MULTIMETER,
-	SR_CONF_CONTINUOUS,
+};
+
+static const uint32_t devopts[] = {
+	SR_CONF_CONTINUOUS | SR_CONF_SET,
 	SR_CONF_LIMIT_SAMPLES | SR_CONF_SET,
 	SR_CONF_LIMIT_MSEC | SR_CONF_SET,
 };
@@ -136,21 +139,19 @@ static GSList *scan(GSList *options)
 		for (i = 0; supported_agdmm[i].model; i++) {
 			if (strcmp(supported_agdmm[i].modelname, tokens[1]))
 				continue;
-			if (!(sdi = sr_dev_inst_new(SR_ST_INACTIVE, "Agilent",
-					tokens[1], tokens[3])))
-				return NULL;
-			if (!(devc = g_try_malloc0(sizeof(struct dev_context)))) {
-				sr_err("Device context malloc failed.");
-				return NULL;
-			}
+			sdi = g_malloc0(sizeof(struct sr_dev_inst));
+			sdi->status = SR_ST_INACTIVE;
+			sdi->vendor = g_strdup("Agilent");
+			sdi->model = g_strdup(tokens[1]);
+			sdi->version = g_strdup(tokens[3]);
+			devc = g_malloc0(sizeof(struct dev_context));
 			devc->profile = &supported_agdmm[i];
 			devc->cur_mq = -1;
 			sdi->inst_type = SR_INST_SERIAL;
 			sdi->conn = serial;
 			sdi->priv = devc;
 			sdi->driver = di;
-			if (!(ch = sr_channel_new(0, SR_CHANNEL_ANALOG, TRUE, "P1")))
-				return NULL;
+			ch = sr_channel_new(0, SR_CHANNEL_ANALOG, TRUE, "P1");
 			sdi->channels = g_slist_append(sdi->channels, ch);
 			drvc->instances = g_slist_append(drvc->instances, sdi);
 			devices = g_slist_append(devices, sdi);
@@ -227,8 +228,12 @@ static int config_list(uint32_t key, GVariant **data, const struct sr_dev_inst *
 				scanopts, ARRAY_SIZE(scanopts), sizeof(uint32_t));
 		break;
 	case SR_CONF_DEVICE_OPTIONS:
-		*data = g_variant_new_fixed_array(G_VARIANT_TYPE_UINT32,
-				devopts, ARRAY_SIZE(devopts), sizeof(uint32_t));
+		if (!sdi)
+			*data = g_variant_new_fixed_array(G_VARIANT_TYPE_UINT32,
+					drvopts, ARRAY_SIZE(drvopts), sizeof(uint32_t));
+		else
+			*data = g_variant_new_fixed_array(G_VARIANT_TYPE_UINT32,
+					devopts, ARRAY_SIZE(devopts), sizeof(uint32_t));
 		break;
 	default:
 		return SR_ERR_NA;

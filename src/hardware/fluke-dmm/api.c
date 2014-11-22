@@ -122,20 +122,18 @@ static GSList *fluke_scan(const char *conn, const char *serialcomm)
 					continue;
 				/* Skip leading spaces in version number. */
 				for (s = 0; tokens[1][s] == ' '; s++);
-				if (!(sdi = sr_dev_inst_new(SR_ST_INACTIVE, "Fluke",
-						tokens[0] + 6, tokens[1] + s)))
-					return NULL;
-				if (!(devc = g_try_malloc0(sizeof(struct dev_context)))) {
-					sr_err("Device context malloc failed.");
-					return NULL;
-				}
+				sdi = g_malloc0(sizeof(struct sr_dev_inst));
+				sdi->status = SR_ST_INACTIVE;
+				sdi->vendor = g_strdup("Fluke");
+				sdi->model = g_strdup(tokens[0] + 6);
+				sdi->version = g_strdup(tokens[1] + s);
+				devc = g_malloc0(sizeof(struct dev_context));
 				devc->profile = &supported_flukedmm[i];
 				sdi->inst_type = SR_INST_SERIAL;
 				sdi->conn = serial;
 				sdi->priv = devc;
 				sdi->driver = di;
-				if (!(ch = sr_channel_new(0, SR_CHANNEL_ANALOG, TRUE, "P1")))
-					return NULL;
+				ch = sr_channel_new(0, SR_CHANNEL_ANALOG, TRUE, "P1");
 				sdi->channels = g_slist_append(sdi->channels, ch);
 				drvc->instances = g_slist_append(drvc->instances, sdi);
 				devices = g_slist_append(devices, sdi);

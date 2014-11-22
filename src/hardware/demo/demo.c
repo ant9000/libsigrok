@@ -128,27 +128,29 @@ struct dev_context {
 	GHashTable *ch_ag;
 };
 
+static const uint32_t drvopts[] = {
+	SR_CONF_DEMO_DEV,
+	SR_CONF_LOGIC_ANALYZER,
+	SR_CONF_OSCILLOSCOPE,
+};
+
 static const uint32_t scanopts[] = {
 	SR_CONF_NUM_LOGIC_CHANNELS,
 	SR_CONF_NUM_ANALOG_CHANNELS,
 };
 
-static const int devopts[] = {
-	SR_CONF_LOGIC_ANALYZER,
-	SR_CONF_CONTINUOUS,
-	SR_CONF_DEMO_DEV,
-	SR_CONF_SAMPLERATE | SR_CONF_GET | SR_CONF_SET | SR_CONF_LIST,
+static const uint32_t devopts[] = {
+	SR_CONF_CONTINUOUS | SR_CONF_SET,
 	SR_CONF_LIMIT_SAMPLES | SR_CONF_GET | SR_CONF_SET,
 	SR_CONF_LIMIT_MSEC | SR_CONF_GET | SR_CONF_SET,
-	SR_CONF_NUM_LOGIC_CHANNELS | SR_CONF_GET,
-	SR_CONF_NUM_ANALOG_CHANNELS | SR_CONF_GET,
+	SR_CONF_SAMPLERATE | SR_CONF_GET | SR_CONF_SET | SR_CONF_LIST,
 };
 
-static const int devopts_cg_logic[] = {
+static const uint32_t devopts_cg_logic[] = {
 	SR_CONF_PATTERN_MODE | SR_CONF_GET | SR_CONF_SET | SR_CONF_LIST,
 };
 
-static const int devopts_cg_analog[] = {
+static const uint32_t devopts_cg_analog[] = {
 	SR_CONF_PATTERN_MODE | SR_CONF_GET | SR_CONF_SET | SR_CONF_LIST,
 	SR_CONF_AMPLITUDE | SR_CONF_GET | SR_CONF_SET,
 };
@@ -200,7 +202,7 @@ static void generate_analog_pattern(struct analog_gen *ag, uint64_t sample_rate)
 			if (i % 5 == 0)
 				value = -value;
 			if (i % 10 == 0)
-				last_end = i - 1;
+				last_end = i;
 			ag->pattern_data[i] = value;
 		}
 		ag->num_samples = last_end;
@@ -287,11 +289,10 @@ static GSList *scan(GSList *options)
 	}
 
 	devices = NULL;
-	sdi = sr_dev_inst_new(SR_ST_ACTIVE, "Demo device", NULL, NULL);
-	if (!sdi) {
-		sr_err("Device instance creation failed.");
-		return NULL;
-	}
+
+	sdi = g_malloc0(sizeof(struct sr_dev_inst));
+	sdi->status = SR_ST_ACTIVE;
+	sdi->model = g_strdup("Demo device");
 	sdi->driver = di;
 
 	devc = g_malloc(sizeof(struct dev_context));
@@ -310,8 +311,7 @@ static GSList *scan(GSList *options)
 	cg->name = g_strdup("Logic");
 	for (i = 0; i < num_logic_channels; i++) {
 		sprintf(channel_name, "D%d", i);
-		if (!(ch = sr_channel_new(i, SR_CHANNEL_LOGIC, TRUE, channel_name)))
-			return NULL;
+		ch = sr_channel_new(i, SR_CHANNEL_LOGIC, TRUE, channel_name);
 		sdi->channels = g_slist_append(sdi->channels, ch);
 		cg->channels = g_slist_append(cg->channels, ch);
 	}
@@ -436,12 +436,6 @@ static int config_get(uint32_t key, GVariant **data, const struct sr_dev_inst *s
 			*data = g_variant_new_string(analog_pattern_str[pattern]);
 		} else
 			return SR_ERR_BUG;
-		break;
-	case SR_CONF_NUM_LOGIC_CHANNELS:
-		*data = g_variant_new_int32(devc->num_logic_channels);
-		break;
-	case SR_CONF_NUM_ANALOG_CHANNELS:
-		*data = g_variant_new_int32(devc->num_analog_channels);
 		break;
 	case SR_CONF_AMPLITUDE:
 		if (!cg)
@@ -568,6 +562,12 @@ static int config_list(uint32_t key, GVariant **data, const struct sr_dev_inst *
 		return SR_OK;
 	}
 
+	if (key == SR_CONF_DEVICE_OPTIONS && !sdi) {
+		*data = g_variant_new_fixed_array(G_VARIANT_TYPE_UINT32,
+				drvopts, ARRAY_SIZE(drvopts), sizeof(uint32_t));
+		return SR_OK;
+	}
+
 	if (!sdi)
 		return SR_ERR_ARG;
 
@@ -670,6 +670,7 @@ static int prepare_data(int fd, int revents, void *cb_data)
 	struct sr_datafeed_packet packet;
 	struct sr_datafeed_logic logic;
 	struct analog_gen *ag;
+	int ag_pattern_pos;
 	GHashTableIter iter;
 	void *value;
 	uint64_t logic_todo, analog_todo, expected_samplenum, analog_sent, sending_now;
@@ -721,13 +722,9 @@ static int prepare_data(int fd, int revents, void *cb_data)
 				ag = value;
 				packet.type = SR_DF_ANALOG;
 				packet.payload = &ag->packet;
-
-				/* FIXME we should make sure we output a whole
-				 * period of data before we send out again the
-				 * beginning of our buffer. A ring buffer would
-				 * help here as well */
-
-				sending_now = MIN(analog_todo, ag->num_samples);
+				ag_pattern_pos = devc->analog_counter % ag->num_samples;
+				sending_now = MIN(analog_todo, ag->num_samples-ag_pattern_pos);
+				ag->packet.data = ag->pattern_data + ag_pattern_pos;
 				ag->packet.num_samples = sending_now;
 				sr_session_send(sdi, &packet);
 

@@ -323,31 +323,28 @@ static struct sr_dev_inst *lascar_identify(unsigned char *config)
 			return NULL;
 		}
 
-		if (!(sdi = sr_dev_inst_new(SR_ST_INACTIVE, LASCAR_VENDOR,
-				profile->modelname, firmware)))
-			return NULL;
+		sdi = g_malloc0(sizeof(struct sr_dev_inst));
+		sdi->status = SR_ST_INACTIVE;
+		sdi->vendor = g_strdup(LASCAR_VENDOR);
+		sdi->model = g_strdup(profile->modelname);
+		sdi->version = g_strdup(firmware);
 		sdi->driver = di;
 
 		if (profile->logformat == LOG_TEMP_RH) {
 			/* Model this as two channels: temperature and humidity. */
-			if (!(ch = sr_channel_new(0, SR_CHANNEL_ANALOG, TRUE, "Temp")))
-				return NULL;
+			ch = sr_channel_new(0, SR_CHANNEL_ANALOG, TRUE, "Temp");
 			sdi->channels = g_slist_append(NULL, ch);
-			if (!(ch = sr_channel_new(0, SR_CHANNEL_ANALOG, TRUE, "Hum")))
-				return NULL;
+			ch = sr_channel_new(0, SR_CHANNEL_ANALOG, TRUE, "Hum");
 			sdi->channels = g_slist_append(sdi->channels, ch);
 		} else if (profile->logformat == LOG_CO) {
-			if (!(ch = sr_channel_new(0, SR_CHANNEL_ANALOG, TRUE, "CO")))
-				return NULL;
+			ch = sr_channel_new(0, SR_CHANNEL_ANALOG, TRUE, "CO");
 			sdi->channels = g_slist_append(NULL, ch);
 		} else {
-			if (!(ch = sr_channel_new(0, SR_CHANNEL_ANALOG, TRUE, "P1")))
-				return NULL;
+			ch = sr_channel_new(0, SR_CHANNEL_ANALOG, TRUE, "P1");
 			sdi->channels = g_slist_append(NULL, ch);
 		}
 
-		if (!(devc = g_try_malloc0(sizeof(struct dev_context))))
-			return NULL;
+		devc = g_malloc0(sizeof(struct dev_context));
 		sdi->priv = devc;
 		devc->profile = profile;
 	}

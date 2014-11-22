@@ -114,6 +114,7 @@ class SR_API InputDevice;
 class SR_API Output;
 class SR_API DataType;
 class SR_API Option;
+class SR_API UserDevice;
 
 /** Exception thrown when an error code is returned by any libsigrok call. */
 class SR_API Error: public exception
@@ -263,6 +264,22 @@ public:
 	void set_log_callback_default();
 	/** Create a new session. */
 	shared_ptr<Session> create_session();
+	/** Create a new user device. */
+	shared_ptr<UserDevice> create_user_device(
+		string vendor, string model, string version);
+	/** Create a header packet. */
+	shared_ptr<Packet> create_header_packet(Glib::TimeVal start_time);
+	/** Create a meta packet. */
+	shared_ptr<Packet> create_meta_packet(
+		map<const ConfigKey *, Glib::VariantBase> config);
+	/** Create a logic packet. */
+	shared_ptr<Packet> create_logic_packet(
+		void *data_pointer, size_t data_length, unsigned int unit_size);
+	/** Create an analog packet. */
+	shared_ptr<Packet> create_analog_packet(
+		vector<shared_ptr<Channel> > channels,
+		float *data_pointer, unsigned int num_samples, const Quantity *mq,
+		const Unit *unit, vector<const QuantityFlag *> mqflags);
 	/** Load a saved session.
 	 * @param filename File name string. */
 	shared_ptr<Session> load_session(string filename);
@@ -416,6 +433,28 @@ protected:
 	friend class ChannelGroup;
 };
 
+/** A virtual device, created by the user */
+class SR_API UserDevice :
+	public UserOwned<UserDevice, struct sr_dev_inst>,
+	public Device
+{
+public:
+	/** Add a new channel to this device. */
+	shared_ptr<Channel> add_channel(unsigned int index, const ChannelType *type, string name);
+protected:
+	UserDevice(string vendor, string model, string version);
+	~UserDevice();
+	shared_ptr<Device> get_shared_from_this();
+	/** Deleter needed to allow shared_ptr use with protected destructor. */
+	class Deleter
+	{
+	public:
+		void operator()(UserDevice *device) { delete device; }
+	};
+	friend class Context;
+	friend class Deleter;
+};
+
 /** A channel on a device */
 class SR_API Channel :
 	public ParentOwned<Channel, Device, struct sr_channel>
@@ -440,9 +479,11 @@ protected:
 	~Channel();
 	const ChannelType * const _type;
 	friend class Device;
+	friend class UserDevice;
 	friend class ChannelGroup;
 	friend class Session;
 	friend class TriggerStage;
+	friend class Context;
 };
 
 /** A group of channels on a device, which share some configuration */
@@ -665,6 +706,8 @@ public:
 	void append(void *data, size_t length, unsigned int unit_size);
 	/** Get current trigger setting. */
 	shared_ptr<Trigger> trigger();
+	/** Get the context. */
+	shared_ptr<Context> context();
 	/** Set trigger setting.
 	 * @param trigger Trigger object to use. */
 	void set_trigger(shared_ptr<Trigger> trigger);
@@ -714,6 +757,7 @@ protected:
 	friend class Meta;
 	friend class Logic;
 	friend class Analog;
+	friend class Context;
 };
 
 /** Abstract base class for datafeed packet payloads */
@@ -935,17 +979,44 @@ protected:
 };
 
 /** Base class for objects which wrap an enumeration value from libsigrok */
-template <typename T> class SR_API EnumValue
+template <class Class, typename Enum> class SR_API EnumValue
 {
 public:
-	/** The enum constant associated with this value. */
-	T id() const { return _id; }
+	/** The integer constant associated with this value. */
+	int id() const
+	{
+		return static_cast<int>(_id);
+	}
 	/** The name associated with this value. */
-	string name() const { return _name; }
+	string name() const
+	{
+		return _name;
+	}
+	/** Get value associated with a given integer constant. */
+	static const Class *get(int id)
+	{
+		auto key = static_cast<Enum>(id);
+		if (_values.find(key) == _values.end())
+			throw Error(SR_ERR_ARG);
+		return _values.at(key);
+	}
+	/** Get possible values. */
+	static std::vector<const Class *> values()
+	{
+		std::vector<const Class *> result;
+		for (auto entry : _values)
+			result.push_back(entry.second);
+		return result;
+	}
 protected:
-	EnumValue(T id, const char name[]) : _id(id), _name(name) {}
-	~EnumValue() {}
-	const T _id;
+	EnumValue(Enum id, const char name[]) : _id(id), _name(name)
+	{
+	}
+	~EnumValue()
+	{
+	}
+	static const std::map<const Enum, const Class * const> _values;
+	const Enum _id;
 	const string _name;
 };
 

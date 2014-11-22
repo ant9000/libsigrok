@@ -144,23 +144,19 @@ static GSList *do_scan(struct sr_dev_driver* drv, GSList *options)
 			auxtype = xgittoint(buf[7]);
 			sr_spew("%s %s DMM %s detected!", get_brandstr(drv), get_typestr(auxtype, drv), buf + 9);
 
-			if (!(sdi = sr_dev_inst_new(SR_ST_INACTIVE,
-						get_brandstr(drv), get_typestr(auxtype, drv), buf + 9)))
-				return NULL;
-			if (!(devc = g_try_malloc0(sizeof(struct dev_context)))) {
-				sr_err("Device context malloc failed.");
-				return NULL;
-			}
+			sdi = g_malloc0(sizeof(struct sr_dev_inst));
+			sdi->status = SR_ST_INACTIVE;
+			sdi->vendor = g_strdup(get_brandstr(drv));
+			sdi->model = g_strdup(get_typestr(auxtype, drv));
+			sdi->version = g_strdup(buf + 9);
+			devc = g_malloc0(sizeof(struct dev_context));
 			devc->type = auxtype;
 			devc->version = g_strdup(&buf[9]);
 			devc->elapsed_msec = g_timer_new();
-
 			sdi->conn = serial;
 			sdi->priv = devc;
 			sdi->driver = drv;
-			if (!(ch = sr_channel_new(0, SR_CHANNEL_ANALOG, TRUE,
-				"P1")))
-				return NULL;
+			ch = sr_channel_new(0, SR_CHANNEL_ANALOG, TRUE, "P1");
 			sdi->channels = g_slist_append(sdi->channels, ch);
 			drvc->instances = g_slist_append(drvc->instances, sdi);
 			devices = g_slist_append(devices, sdi);

@@ -198,22 +198,20 @@ static GSList *scan(GSList *options)
 		if (des.idVendor != LOGIC16_VID || des.idProduct != LOGIC16_PID)
 			continue;
 
-		sdi = sr_dev_inst_new(SR_ST_INITIALIZING,
-				      "Saleae", "Logic16", NULL);
-		if (!sdi)
-			return NULL;
+		sdi = g_malloc0(sizeof(struct sr_dev_inst));
+		sdi->status = SR_ST_INITIALIZING;
+		sdi->vendor = g_strdup("Saleae");
+		sdi->model = g_strdup("Logic16");
 		sdi->driver = di;
 		sdi->connection_id = g_strdup(connection_id);
 
 		for (j = 0; channel_names[j]; j++) {
-			if (!(ch = sr_channel_new(j, SR_CHANNEL_LOGIC, TRUE,
-						   channel_names[j])))
-				return NULL;
+			ch = sr_channel_new(j, SR_CHANNEL_LOGIC, TRUE,
+					    channel_names[j]);
 			sdi->channels = g_slist_append(sdi->channels, ch);
 		}
 
-		if (!(devc = g_try_malloc0(sizeof(struct dev_context))))
-			return NULL;
+		devc = g_malloc0(sizeof(struct dev_context));
 		devc->selected_voltage_range = VOLTAGE_RANGE_18_33_V;
 		sdi->priv = devc;
 		drvc->instances = g_slist_append(drvc->instances, sdi);

@@ -214,6 +214,77 @@ shared_ptr<Session> Context::create_session()
 		new Session(shared_from_this()), Session::Deleter());
 }
 
+shared_ptr<UserDevice> Context::create_user_device(
+		string vendor, string model, string version)
+{
+	return shared_ptr<UserDevice>(
+		new UserDevice(vendor, model, version), UserDevice::Deleter());
+}
+
+shared_ptr<Packet> Context::create_header_packet(Glib::TimeVal start_time)
+{
+	auto header = g_new(struct sr_datafeed_header, 1);
+	header->feed_version = 1;
+	header->starttime.tv_sec = start_time.tv_sec;
+	header->starttime.tv_usec = start_time.tv_usec;
+	auto packet = g_new(struct sr_datafeed_packet, 1);
+	packet->type = SR_DF_HEADER;
+	packet->payload = header;
+	return shared_ptr<Packet>(new Packet(nullptr, packet), Packet::Deleter());
+}
+
+shared_ptr<Packet> Context::create_meta_packet(
+	map<const ConfigKey *, Glib::VariantBase> config)
+{
+	auto meta = g_new0(struct sr_datafeed_meta, 1);
+	for (auto input : config)
+	{
+		auto key = input.first;
+		auto value = input.second;
+		auto output = g_new(struct sr_config, 1);
+		output->key = key->id();
+		output->data = value.gobj();
+		g_variant_ref(output->data);
+		meta->config = g_slist_append(meta->config, output);
+	}
+	auto packet = g_new(struct sr_datafeed_packet, 1);
+	packet->type = SR_DF_META;
+	packet->payload = meta;
+	return shared_ptr<Packet>(new Packet(nullptr, packet), Packet::Deleter());
+}
+
+shared_ptr<Packet> Context::create_logic_packet(
+	void *data_pointer, size_t data_length, unsigned int unit_size)
+{
+	auto logic = g_new(struct sr_datafeed_logic, 1);
+	logic->length = data_length;
+	logic->unitsize = unit_size;
+	logic->data = data_pointer;
+	auto packet = g_new(struct sr_datafeed_packet, 1);
+	packet->type = SR_DF_LOGIC;
+	packet->payload = logic;
+	return shared_ptr<Packet>(new Packet(nullptr, packet), Packet::Deleter());
+}
+
+shared_ptr<Packet> Context::create_analog_packet(
+	vector<shared_ptr<Channel> > channels,
+	float *data_pointer, unsigned int num_samples, const Quantity *mq,
+	const Unit *unit, vector<const QuantityFlag *> mqflags)
+{
+	auto analog = g_new0(struct sr_datafeed_analog, 1);
+	for (auto channel : channels)
+		analog->channels = g_slist_append(analog->channels, channel->_structure);
+	analog->num_samples = num_samples;
+	analog->mq = mq->id();
+	analog->unit = unit->id();
+	analog->mqflags = QuantityFlag::mask_from_flags(mqflags);
+	analog->data = data_pointer;
+	auto packet = g_new(struct sr_datafeed_packet, 1);
+	packet->type = SR_DF_ANALOG;
+	packet->payload = analog;
+	return shared_ptr<Packet>(new Packet(nullptr, packet), Packet::Deleter());
+}
+
 shared_ptr<Session> Context::load_session(string filename)
 {
 	return shared_ptr<Session>(
@@ -400,7 +471,7 @@ bool Configurable::config_check(const ConfigKey *key,
 
 	for (gsize i = 0; i < num_opts; i++)
 	{
-		if ((opts[i] & SR_CONF_MASK) == key->id())
+		if ((opts[i] & SR_CONF_MASK) == (uint32_t) key->id())
 		{
 			g_variant_unref(gvar_opts);
 			return true;
@@ -413,16 +484,16 @@ bool Configurable::config_check(const ConfigKey *key,
 }
 
 Device::Device(struct sr_dev_inst *structure) :
-	Configurable(structure->driver, structure, NULL),
+	Configurable(sr_dev_inst_driver_get(structure), structure, NULL),
 	_structure(structure)
 {
-	for (GSList *entry = structure->channels; entry; entry = entry->next)
+	for (GSList *entry = sr_dev_inst_channels_get(structure); entry; entry = entry->next)
 	{
 		auto channel = (struct sr_channel *) entry->data;
 		_channels[channel] = new Channel(channel);
 	}
 
-	for (GSList *entry = structure->channel_groups; entry; entry = entry->next)
+	for (GSList *entry = sr_dev_inst_channel_groups_get(structure); entry; entry = entry->next)
 	{
 		auto group = (struct sr_channel_group *) entry->data;
 		_channel_groups[group->name] = new ChannelGroup(this, group);
@@ -439,33 +510,33 @@ Device::~Device()
 
 string Device::vendor()
 {
-	return valid_string(_structure->vendor);
+	return valid_string(sr_dev_inst_vendor_get(_structure));
 }
 
 string Device::model()
 {
-	return valid_string(_structure->model);
+	return valid_string(sr_dev_inst_model_get(_structure));
 }
 
 string Device::version()
 {
-	return valid_string(_structure->version);
+	return valid_string(sr_dev_inst_version_get(_structure));
 }
 
 string Device::serial_number()
 {
-	return valid_string(_structure->serial_num);
+	return valid_string(sr_dev_inst_sernum_get(_structure));
 }
 
 string Device::connection_id()
 {
-	return valid_string(_structure->connection_id);
+	return valid_string(sr_dev_inst_connid_get(_structure));
 }
 
 vector<shared_ptr<Channel>> Device::channels()
 {
 	vector<shared_ptr<Channel>> result;
-	for (auto channel = _structure->channels; channel; channel = channel->next)
+	for (auto channel = sr_dev_inst_channels_get(_structure); channel; channel = channel->next)
 		result.push_back(
 			_channels[(struct sr_channel *) channel->data]->get_shared_pointer(
 				get_shared_from_this()));
@@ -522,6 +593,34 @@ shared_ptr<Driver> HardwareDevice::driver()
 	return _driver;
 }
 
+UserDevice::UserDevice(string vendor, string model, string version) :
+	UserOwned(sr_dev_inst_user_new(
+		vendor.c_str(), model.c_str(), version.c_str())),
+	Device(UserOwned::_structure)
+{
+}
+
+UserDevice::~UserDevice()
+{
+}
+
+shared_ptr<Device> UserDevice::get_shared_from_this()
+{
+	return static_pointer_cast<Device>(shared_from_this());
+}
+
+shared_ptr<Channel> UserDevice::add_channel(unsigned int index,
+	const ChannelType *type, string name)
+{
+	check(sr_dev_inst_channel_add(Device::_structure,
+		index, type->id(), name.c_str()));
+	struct sr_channel *structure = (struct sr_channel *)
+			g_slist_last(sr_dev_inst_channels_get(Device::_structure))->data;
+	Channel *channel = new Channel(structure);
+	_channels[structure] = channel;
+	return get_channel(structure);
+}
+
 Channel::Channel(struct sr_channel *structure) :
 	ParentOwned(structure),
 	_type(ChannelType::get(_structure->type))
@@ -566,7 +665,7 @@ unsigned int Channel::index()
 ChannelGroup::ChannelGroup(Device *device,
 		struct sr_channel_group *structure) :
 	ParentOwned(structure),
-	Configurable(device->_structure->driver, device->_structure, structure)
+	Configurable(sr_dev_inst_driver_get(device->_structure), device->_structure, structure)
 {
 	for (GSList *entry = structure->channels; entry; entry = entry->next)
 		_channels.push_back(device->_channels[(struct sr_channel *)entry->data]);
@@ -897,7 +996,7 @@ void Session::append(shared_ptr<Packet> packet)
 			{
 				GVariant *samplerate;
 
-				check(sr_config_get(packet->_device->_structure->driver,
+				check(sr_config_get(sr_dev_inst_driver_get(packet->_device->_structure),
 					packet->_device->_structure, NULL, SR_CONF_SAMPLERATE,
 					&samplerate));
 
@@ -1046,6 +1145,11 @@ void Session::set_trigger(shared_ptr<Trigger> trigger)
 string Session::filename()
 {
 	return _filename;
+}
+
+shared_ptr<Context> Session::context()
+{
+	return _context;
 }
 
 Packet::Packet(shared_ptr<Device> device,

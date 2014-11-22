@@ -28,9 +28,12 @@ static const uint32_t scanopts[] = {
 	SR_CONF_CONN,
 };
 
-static const uint32_t devopts[] = {
+static const uint32_t drvopts[] = {
 	SR_CONF_SOUNDLEVELMETER,
-	SR_CONF_CONTINUOUS,
+};
+
+static const uint32_t devopts[] = {
+	SR_CONF_CONTINUOUS | SR_CONF_SET,
 	SR_CONF_LIMIT_SAMPLES | SR_CONF_GET | SR_CONF_SET,
 	SR_CONF_SPL_WEIGHT_FREQ | SR_CONF_GET | SR_CONF_SET | SR_CONF_LIST,
 	SR_CONF_SPL_WEIGHT_TIME | SR_CONF_GET | SR_CONF_SET | SR_CONF_LIST,
@@ -106,14 +109,11 @@ static GSList *scan(GSList *options)
 	while (g_get_monotonic_time() - start < MAX_SCAN_TIME) {
 		if (serial_read_nonblocking(serial, &c, 1) == 1 && c == 0xa5) {
 			/* Found one. */
-			if (!(sdi = sr_dev_inst_new(SR_ST_INACTIVE, "CEM",
-					"DT-885x", NULL)))
-				return NULL;
-
-			if (!(devc = g_try_malloc0(sizeof(struct dev_context)))) {
-				sr_dbg("Device context malloc failed.");
-				return NULL;
-			}
+			sdi = g_malloc0(sizeof(struct sr_dev_inst));
+			sdi->status = SR_ST_INACTIVE;
+			sdi->vendor = g_strdup("CEM");
+			sdi->model = g_strdup("DT-885x");
+			devc = g_malloc0(sizeof(struct dev_context));
 			devc->cur_mqflags = 0;
 			devc->recording = -1;
 			devc->cur_meas_range = 0;
@@ -126,8 +126,7 @@ static GSList *scan(GSList *options)
 			sdi->inst_type = SR_INST_SERIAL;
 			sdi->priv = devc;
 			sdi->driver = di;
-			if (!(ch = sr_channel_new(0, SR_CHANNEL_ANALOG, TRUE, "SPL")))
-				return NULL;
+			ch = sr_channel_new(0, SR_CHANNEL_ANALOG, TRUE, "SPL");
 			sdi->channels = g_slist_append(sdi->channels, ch);
 			drvc->instances = g_slist_append(drvc->instances, sdi);
 			devices = g_slist_append(devices, sdi);
@@ -335,40 +334,49 @@ static int config_list(uint32_t key, GVariant **data, const struct sr_dev_inst *
 	unsigned int i;
 	int ret;
 
-	(void)sdi;
 	(void)cg;
 
 	ret = SR_OK;
-	switch (key) {
-	case SR_CONF_SCAN_OPTIONS:
-		*data = g_variant_new_fixed_array(G_VARIANT_TYPE_UINT32,
-				scanopts, ARRAY_SIZE(scanopts), sizeof(uint32_t));
-		break;
-	case SR_CONF_DEVICE_OPTIONS:
-		*data = g_variant_new_fixed_array(G_VARIANT_TYPE_UINT32,
-				devopts, ARRAY_SIZE(devopts), sizeof(uint32_t));
-		break;
-	case SR_CONF_SPL_WEIGHT_FREQ:
-		*data = g_variant_new_strv(weight_freq, ARRAY_SIZE(weight_freq));
-		break;
-	case SR_CONF_SPL_WEIGHT_TIME:
-		*data = g_variant_new_strv(weight_time, ARRAY_SIZE(weight_time));
-		break;
-	case SR_CONF_SPL_MEASUREMENT_RANGE:
-		g_variant_builder_init(&gvb, G_VARIANT_TYPE_ARRAY);
-		for (i = 0; i < ARRAY_SIZE(meas_ranges); i++) {
-			range[0] = g_variant_new_uint64(meas_ranges[i][0]);
-			range[1] = g_variant_new_uint64(meas_ranges[i][1]);
-			tuple = g_variant_new_tuple(range, 2);
-			g_variant_builder_add_value(&gvb, tuple);
+	if (!sdi) {
+		switch (key) {
+		case SR_CONF_SCAN_OPTIONS:
+			*data = g_variant_new_fixed_array(G_VARIANT_TYPE_UINT32,
+					scanopts, ARRAY_SIZE(scanopts), sizeof(uint32_t));
+			break;
+		case SR_CONF_DEVICE_OPTIONS:
+			*data = g_variant_new_fixed_array(G_VARIANT_TYPE_UINT32,
+					drvopts, ARRAY_SIZE(drvopts), sizeof(uint32_t));
+			break;
+		default:
+			return SR_ERR_NA;
 		}
-		*data = g_variant_builder_end(&gvb);
-		break;
-	case SR_CONF_DATA_SOURCE:
-		*data = g_variant_new_strv(data_sources, ARRAY_SIZE(data_sources));
-		break;
-	default:
-		return SR_ERR_NA;
+	} else {
+		switch (key) {
+		case SR_CONF_DEVICE_OPTIONS:
+			*data = g_variant_new_fixed_array(G_VARIANT_TYPE_UINT32,
+					devopts, ARRAY_SIZE(devopts), sizeof(uint32_t));
+		case SR_CONF_SPL_WEIGHT_FREQ:
+			*data = g_variant_new_strv(weight_freq, ARRAY_SIZE(weight_freq));
+			break;
+		case SR_CONF_SPL_WEIGHT_TIME:
+			*data = g_variant_new_strv(weight_time, ARRAY_SIZE(weight_time));
+			break;
+		case SR_CONF_SPL_MEASUREMENT_RANGE:
+			g_variant_builder_init(&gvb, G_VARIANT_TYPE_ARRAY);
+			for (i = 0; i < ARRAY_SIZE(meas_ranges); i++) {
+				range[0] = g_variant_new_uint64(meas_ranges[i][0]);
+				range[1] = g_variant_new_uint64(meas_ranges[i][1]);
+				tuple = g_variant_new_tuple(range, 2);
+				g_variant_builder_add_value(&gvb, tuple);
+			}
+			*data = g_variant_builder_end(&gvb);
+			break;
+		case SR_CONF_DATA_SOURCE:
+			*data = g_variant_new_strv(data_sources, ARRAY_SIZE(data_sources));
+			break;
+		default:
+			return SR_ERR_NA;
+		}
 	}
 
 	return ret;

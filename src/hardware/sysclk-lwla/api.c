@@ -99,26 +99,19 @@ static GSList *gen_channel_list(int num_channels)
 	return list;
 }
 
-static struct sr_dev_inst *dev_inst_new()
+static struct sr_dev_inst *dev_inst_new(void)
 {
 	struct sr_dev_inst *sdi;
 	struct dev_context *devc;
 
 	/* Allocate memory for our private driver context. */
-	devc = g_try_new0(struct dev_context, 1);
-	if (!devc) {
-		sr_err("Device context malloc failed.");
-		return NULL;
-	}
+	devc = g_malloc0(sizeof(struct dev_context));
 
 	/* Register the device with libsigrok. */
-	sdi = sr_dev_inst_new(SR_ST_INACTIVE,
-			      VENDOR_NAME, MODEL_NAME, NULL);
-	if (!sdi) {
-		sr_err("Failed to instantiate device.");
-		g_free(devc);
-		return NULL;
-	}
+	sdi = g_malloc0(sizeof(struct sr_dev_inst));
+	sdi->status = SR_ST_INACTIVE;
+	sdi->vendor = g_strdup(VENDOR_NAME);
+	sdi->model = g_strdup(MODEL_NAME);
 
 	/* Enable all channels to match the default channel configuration. */
 	devc->channel_mask = ALL_CHANNELS_MASK;

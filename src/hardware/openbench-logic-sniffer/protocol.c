@@ -33,6 +33,9 @@ SR_PRIV int send_shortcommand(struct sr_serial_dev_inst *serial,
 	if (serial_write_blocking(serial, buf, 1, serial_timeout(serial, 1)) != 1)
 		return SR_ERR;
 
+	if (serial_drain(serial) != 0)
+		return SR_ERR;
+
 	return SR_OK;
 }
 
@@ -49,6 +52,9 @@ SR_PRIV int send_longcommand(struct sr_serial_dev_inst *serial,
 	buf[3] = data[2];
 	buf[4] = data[3];
 	if (serial_write_blocking(serial, buf, 5, serial_timeout(serial, 1)) != 5)
+		return SR_ERR;
+
+	if (serial_drain(serial) != 0)
 		return SR_ERR;
 
 	return SR_OK;
@@ -118,10 +124,7 @@ SR_PRIV struct dev_context *ols_dev_new(void)
 {
 	struct dev_context *devc;
 
-	if (!(devc = g_try_malloc(sizeof(struct dev_context)))) {
-		sr_err("Device context malloc failed.");
-		return NULL;
-	}
+	devc = g_malloc0(sizeof(struct dev_context));
 
 	/* Device-specific settings */
 	devc->max_samples = devc->max_samplerate = devc->protocol_version = 0;
@@ -146,7 +149,8 @@ SR_PRIV struct sr_dev_inst *get_metadata(struct sr_serial_dev_inst *serial)
 	GString *tmp_str, *devname, *version;
 	guchar tmp_c;
 
-	sdi = sr_dev_inst_new(SR_ST_INACTIVE, NULL, NULL, NULL);
+	sdi = g_malloc0(sizeof(struct sr_dev_inst));
+	sdi->status = SR_ST_INACTIVE;
 	sdi->driver = di;
 	devc = ols_dev_new();
 	sdi->priv = devc;
@@ -212,9 +216,8 @@ SR_PRIV struct sr_dev_inst *get_metadata(struct sr_serial_dev_inst *serial)
 			case 0x00:
 				/* Number of usable channels */
 				for (ui = 0; ui < tmp_int; ui++) {
-					if (!(ch = sr_channel_new(ui, SR_CHANNEL_LOGIC, TRUE,
-							ols_channel_names[ui])))
-						return 0;
+					ch = sr_channel_new(ui, SR_CHANNEL_LOGIC, TRUE,
+							ols_channel_names[ui]);
 					sdi->channels = g_slist_append(sdi->channels, ch);
 				}
 				break;
@@ -251,9 +254,8 @@ SR_PRIV struct sr_dev_inst *get_metadata(struct sr_serial_dev_inst *serial)
 			case 0x00:
 				/* Number of usable channels */
 				for (ui = 0; ui < tmp_c; ui++) {
-					if (!(ch = sr_channel_new(ui, SR_CHANNEL_LOGIC, TRUE,
-							ols_channel_names[ui])))
-						return 0;
+					ch = sr_channel_new(ui, SR_CHANNEL_LOGIC, TRUE,
+							ols_channel_names[ui]);
 					sdi->channels = g_slist_append(sdi->channels, ch);
 				}
 				break;

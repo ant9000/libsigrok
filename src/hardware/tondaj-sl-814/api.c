@@ -84,16 +84,11 @@ static GSList *scan(GSList *options)
 	if (!serialcomm)
 		serialcomm = SERIALCOMM;
 
-	if (!(sdi = sr_dev_inst_new(SR_ST_INACTIVE, "Tondaj",
-				    "SL-814", NULL))) {
-		sr_err("Failed to create device instance.");
-		return NULL;
-	}
-
-	if (!(devc = g_try_malloc0(sizeof(struct dev_context)))) {
-		sr_err("Device context malloc failed.");
-		return NULL;
-	}
+	sdi = g_malloc0(sizeof(struct sr_dev_inst));
+	sdi->status = SR_ST_INACTIVE;
+	sdi->vendor = g_strdup("Tondaj");
+	sdi->model = g_strdup("SL-814");
+	devc = g_malloc0(sizeof(struct dev_context));
 
 	if (!(serial = sr_serial_dev_inst_new(conn, serialcomm)))
 		return NULL;
@@ -107,10 +102,6 @@ static GSList *scan(GSList *options)
 	sdi->priv = devc;
 	sdi->driver = di;
 	ch = sr_channel_new(0, SR_CHANNEL_ANALOG, TRUE, "P1");
-	if (!ch) {
-		sr_err("Failed to create channel.");
-		return NULL;
-	}
 	sdi->channels = g_slist_append(sdi->channels, ch);
 	drvc->instances = g_slist_append(drvc->instances, sdi);
 	devices = g_slist_append(devices, sdi);

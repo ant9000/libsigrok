@@ -73,16 +73,19 @@ static const struct fx2lafw_profile supported_fx2[] = {
 	{ 0, 0, 0, 0, 0, 0, 0, 0, 0 }
 };
 
+static const uint32_t drvopts[] = {
+	SR_CONF_LOGIC_ANALYZER,
+};
+
 static const uint32_t scanopts[] = {
 	SR_CONF_CONN,
 };
 
 static const uint32_t devopts[] = {
-	SR_CONF_LOGIC_ANALYZER,
-	SR_CONF_CONTINUOUS,
+	SR_CONF_CONTINUOUS | SR_CONF_SET,
+	SR_CONF_LIMIT_SAMPLES | SR_CONF_GET | SR_CONF_SET,
 	SR_CONF_CONN | SR_CONF_GET,
 	SR_CONF_SAMPLERATE | SR_CONF_GET | SR_CONF_SET | SR_CONF_LIST,
-	SR_CONF_LIMIT_SAMPLES | SR_CONF_GET | SR_CONF_SET,
 	SR_CONF_TRIGGER_MATCH | SR_CONF_LIST,
 };
 
@@ -238,10 +241,11 @@ static GSList *scan(GSList *options)
 		if (!prof)
 			continue;
 
-		sdi = sr_dev_inst_new(SR_ST_INITIALIZING,
-			prof->vendor, prof->model, prof->model_version);
-		if (!sdi)
-			return NULL;
+		sdi = g_malloc0(sizeof(struct sr_dev_inst));
+		sdi->status = SR_ST_INITIALIZING;
+		sdi->vendor = g_strdup(prof->vendor);
+		sdi->model = g_strdup(prof->model);
+		sdi->version = g_strdup(prof->model_version);
 		sdi->driver = di;
 		sdi->serial_num = g_strdup(serial_num);
 		sdi->connection_id = g_strdup(connection_id);
@@ -249,14 +253,14 @@ static GSList *scan(GSList *options)
 		/* Fill in channellist according to this device's profile. */
 		num_logic_channels = prof->dev_caps & DEV_CAPS_16BIT ? 16 : 8;
 		for (j = 0; j < num_logic_channels; j++) {
-			if (!(ch = sr_channel_new(j, SR_CHANNEL_LOGIC, TRUE,
-					channel_names[j])))
-				return NULL;
+			ch = sr_channel_new(j, SR_CHANNEL_LOGIC, TRUE,
+					channel_names[j]);
 			sdi->channels = g_slist_append(sdi->channels, ch);
 		}
 
 		devc = fx2lafw_dev_new();
 		devc->profile = prof;
+		devc->sample_wide = (prof->dev_caps & DEV_CAPS_16BIT) != 0;
 		sdi->priv = devc;
 		drvc->instances = g_slist_append(drvc->instances, sdi);
 		devices = g_slist_append(devices, sdi);
@@ -495,8 +499,12 @@ static int config_list(uint32_t key, GVariant **data, const struct sr_dev_inst *
 				scanopts, ARRAY_SIZE(scanopts), sizeof(uint32_t));
 		break;
 	case SR_CONF_DEVICE_OPTIONS:
-		*data = g_variant_new_fixed_array(G_VARIANT_TYPE_UINT32,
-				devopts, ARRAY_SIZE(devopts), sizeof(uint32_t));
+		if (!sdi)
+			*data = g_variant_new_fixed_array(G_VARIANT_TYPE_UINT32,
+					drvopts, ARRAY_SIZE(drvopts), sizeof(uint32_t));
+		else
+			*data = g_variant_new_fixed_array(G_VARIANT_TYPE_UINT32,
+					devopts, ARRAY_SIZE(devopts), sizeof(uint32_t));
 		break;
 	case SR_CONF_SAMPLERATE:
 		g_variant_builder_init(&gvb, G_VARIANT_TYPE("a{sv}"));

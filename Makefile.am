@@ -35,6 +35,7 @@ libsigrok_la_SOURCES = \
 	src/hwdriver.c \
 	src/trigger.c \
 	src/soft-trigger.c \
+	src/analog.c \
 	src/strutil.c \
 	src/log.c \
 	src/version.c \
@@ -63,6 +64,7 @@ libsigrok_la_SOURCES += \
 	src/output/gnuplot.c \
 	src/output/hex.c \
 	src/output/ols.c \
+	src/output/srzip.c \
 	src/output/vcd.c
 
 # SCPI support
@@ -423,7 +425,8 @@ tests_check_main_SOURCES = \
 	tests/check_session.c \
 	tests/check_strutil.c \
 	tests/check_version.c \
-	tests/check_driver_all.c
+	tests/check_driver_all.c \
+	tests/check_device.c
 
 tests_check_main_CFLAGS = @check_CFLAGS@
 

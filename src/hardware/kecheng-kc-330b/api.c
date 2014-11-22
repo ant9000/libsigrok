@@ -129,21 +129,16 @@ static GSList *scan(GSList *options)
 		for (l = usb_devices; l; l = l->next) {
 			if (scan_kecheng(l->data, &model) != SR_OK)
 				continue;
-			if (!(sdi = sr_dev_inst_new(SR_ST_INACTIVE, VENDOR,
-					model, NULL)))
-				return NULL;
-			g_free(model);
+			sdi = g_malloc0(sizeof(struct sr_dev_inst));
+			sdi->status = SR_ST_INACTIVE;
+			sdi->vendor = g_strdup(VENDOR);
+			sdi->model = model; /* Already g_strndup()'d. */
 			sdi->driver = di;
 			sdi->inst_type = SR_INST_USB;
 			sdi->conn = l->data;
-			if (!(ch = sr_channel_new(0, SR_CHANNEL_ANALOG, TRUE, "SPL")))
-				return NULL;
+			ch = sr_channel_new(0, SR_CHANNEL_ANALOG, TRUE, "SPL");
 			sdi->channels = g_slist_append(sdi->channels, ch);
-
-			if (!(devc = g_try_malloc(sizeof(struct dev_context)))) {
-				sr_dbg("Device context malloc failed.");
-				return NULL;
-			}
+			devc = g_malloc0(sizeof(struct dev_context));
 			sdi->priv = devc;
 			devc->limit_samples = 0;
 			/* The protocol provides no way to read the current

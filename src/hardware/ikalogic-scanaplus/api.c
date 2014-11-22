@@ -88,10 +88,7 @@ static GSList *scan(GSList *options)
 	devices = NULL;
 
 	/* Allocate memory for our private device context. */
-	if (!(devc = g_try_malloc0(sizeof(struct dev_context)))) {
-		sr_err("Device context malloc failed.");
-		goto err_free_nothing;
-	}
+	devc = g_malloc0(sizeof(struct dev_context));
 
 	/* Allocate memory for the incoming compressed samples. */
 	if (!(devc->compressed_buf = g_try_malloc0(COMPRESSED_BUF_SIZE))) {
@@ -123,19 +120,16 @@ static GSList *scan(GSList *options)
 	}
 
 	/* Register the device with libsigrok. */
-	sdi = sr_dev_inst_new(SR_ST_INITIALIZING,
-			USB_VENDOR_NAME, USB_MODEL_NAME, NULL);
-	if (!sdi) {
-		sr_err("Failed to create device instance.");
-		goto err_close_ftdic;
-	}
+	sdi = g_malloc0(sizeof(struct sr_dev_inst));
+	sdi->status = SR_ST_INITIALIZING;
+	sdi->vendor = g_strdup(USB_VENDOR_NAME);
+	sdi->model = g_strdup(USB_MODEL_NAME);
 	sdi->driver = di;
 	sdi->priv = devc;
 
 	for (i = 0; channel_names[i]; i++) {
-		if (!(ch = sr_channel_new(i, SR_CHANNEL_LOGIC, TRUE,
-					   channel_names[i])))
-			return NULL;
+		ch = sr_channel_new(i, SR_CHANNEL_LOGIC, TRUE,
+				    channel_names[i]);
 		sdi->channels = g_slist_append(sdi->channels, ch);
 	}
 
@@ -147,7 +141,6 @@ static GSList *scan(GSList *options)
 
 	return devices;
 
-err_close_ftdic:
 	scanaplus_close(devc);
 err_free_ftdic:
 	ftdi_free(devc->ftdic); /* NOT free() or g_free()! */
@@ -157,7 +150,6 @@ err_free_compressed_buf:
 	g_free(devc->compressed_buf);
 err_free_devc:
 	g_free(devc);
-err_free_nothing:
 
 	return NULL;
 }

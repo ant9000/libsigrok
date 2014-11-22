@@ -48,10 +48,36 @@ extern SR_PRIV struct sr_dev_driver *drivers_list[];
  */
 
 static struct sr_config_info sr_config_info_data[] = {
+	/* Device types */
+	{SR_CONF_LOGIC_ANALYZER, SR_T_STRING, NULL, "Logic Analyzer", NULL},
+	{SR_CONF_OSCILLOSCOPE, SR_T_STRING, NULL, "Oscilloscope", NULL},
+	{SR_CONF_MULTIMETER, SR_T_STRING, NULL, "Multimeter", NULL},
+	{SR_CONF_DEMO_DEV, SR_T_STRING, NULL, "Demo device", NULL},
+	{SR_CONF_SOUNDLEVELMETER, SR_T_STRING, NULL, "Sound level meter", NULL},
+	{SR_CONF_THERMOMETER, SR_T_STRING, NULL, "Thermometer", NULL},
+	{SR_CONF_HYGROMETER, SR_T_STRING, NULL, "Hygrometer", NULL},
+	{SR_CONF_ENERGYMETER, SR_T_STRING, NULL, "Energy meter", NULL},
+	{SR_CONF_DEMODULATOR, SR_T_STRING, NULL, "Demodulator", NULL},
+	{SR_CONF_POWER_SUPPLY, SR_T_STRING, NULL, "Power supply", NULL},
+	{SR_CONF_LCRMETER, SR_T_STRING, NULL, "LCR meter", NULL},
+
+	/* Sample limiting */
+	{SR_CONF_LIMIT_SAMPLES, SR_T_UINT64, "limit_samples",
+		"Sample limit", NULL},
+	{SR_CONF_LIMIT_MSEC, SR_T_UINT64, "limit_time",
+		"Time limit", NULL},
+	{SR_CONF_LIMIT_FRAMES, SR_T_UINT64, "limit_frames",
+		"Frame limit", NULL},
+	{SR_CONF_CONTINUOUS, SR_T_UINT64, "continuous",
+		"Continuous sampling", NULL},
+
+	/* Scan options */
 	{SR_CONF_CONN, SR_T_STRING, "conn",
 		"Connection", NULL},
 	{SR_CONF_SERIALCOMM, SR_T_STRING, "serialcomm",
 		"Serial communication", NULL},
+
+	/* Device/channel group options */
 	{SR_CONF_SAMPLERATE, SR_T_UINT64, "samplerate",
 		"Sample rate", NULL},
 	{SR_CONF_CAPTURE_RATIO, SR_T_UINT64, "captureratio",
@@ -76,8 +102,8 @@ static struct sr_config_info sr_config_info_data[] = {
 		"Buffer size", NULL},
 	{SR_CONF_TIMEBASE, SR_T_RATIONAL_PERIOD, "timebase",
 		"Time base", NULL},
-	{SR_CONF_FILTER, SR_T_STRING, "filter",
-		"Filter targets", NULL},
+	{SR_CONF_FILTER, SR_T_BOOL, "filter",
+		"Filter", NULL},
 	{SR_CONF_VDIV, SR_T_RATIONAL_VOLT, "vdiv",
 		"Volts/div", NULL},
 	{SR_CONF_COUPLING, SR_T_STRING, "coupling",
@@ -128,8 +154,6 @@ static struct sr_config_info sr_config_info_data[] = {
 		"Over-current protection active", NULL},
 	{SR_CONF_OVER_CURRENT_PROTECTION_THRESHOLD, SR_T_FLOAT, "ocp_threshold",
 		"Over-current protection threshold", NULL},
-	{SR_CONF_LIMIT_SAMPLES, SR_T_UINT64, "limit_samples",
-		"Sample limit", NULL},
 	{SR_CONF_CLOCK_EDGE, SR_T_STRING, "clock_edge",
 		"Clock edge", NULL},
 	{SR_CONF_AMPLITUDE, SR_T_FLOAT, "amplitude",
@@ -253,6 +277,50 @@ SR_API int sr_driver_init(struct sr_context *ctx, struct sr_dev_driver *driver)
 	return ret;
 }
 
+static int check_options(struct sr_dev_driver *driver, GSList *options,
+		uint32_t optlist_key, struct sr_dev_inst *sdi,
+		struct sr_channel_group *cg)
+{
+	struct sr_config *src;
+	const struct sr_config_info *srci;
+	GVariant *gvar_opts;
+	GSList *l;
+	const uint32_t *opts;
+	gsize num_opts, i;
+	int ret;
+
+	if (sr_config_list(driver, sdi, cg, optlist_key, &gvar_opts) != SR_OK) {
+		/* Driver publishes no options for this optlist. */
+		return SR_ERR;
+	}
+
+	ret = SR_OK;
+	opts = g_variant_get_fixed_array(gvar_opts, &num_opts, sizeof(uint32_t));
+	for (l = options; l; l = l->next) {
+		src = l->data;
+		for (i = 0; i < num_opts; i++) {
+			if (opts[i] == src->key)
+				break;
+		}
+		if (i == num_opts) {
+			if (!(srci = sr_config_info_get(src->key)))
+				/* Shouldn't happen. */
+				sr_err("Invalid option %d.", src->key);
+			else
+				sr_err("Invalid option '%s'.", srci->id);
+			ret = SR_ERR_ARG;
+			break;
+		}
+		if (sr_variant_type_check(src->key, src->data) != SR_OK) {
+			ret = SR_ERR_ARG;
+			break;
+		}
+	}
+	g_variant_unref(gvar_opts);
+
+	return ret;
+}
+
 /**
  * Tell a hardware driver to scan for devices.
  *
@@ -281,7 +349,6 @@ SR_API int sr_driver_init(struct sr_context *ctx, struct sr_dev_driver *driver)
 SR_API GSList *sr_driver_scan(struct sr_dev_driver *driver, GSList *options)
 {
 	GSList *l;
-	struct sr_config *src;
 
 	if (!driver) {
 		sr_err("Invalid driver, can't scan for devices.");
@@ -293,9 +360,8 @@ SR_API GSList *sr_driver_scan(struct sr_dev_driver *driver, GSList *options)
 		return NULL;
 	}
 
-	for (l = options; l; l = l->next) {
-		src = l->data;
-		if (sr_variant_type_check(src->key, src->data) != SR_OK)
+	if (options) {
+		if (check_options(driver, options, SR_CONF_SCAN_OPTIONS, NULL, NULL) != SR_OK)
 			return NULL;
 	}
 
@@ -353,6 +419,59 @@ SR_PRIV void sr_config_free(struct sr_config *src)
 
 }
 
+static int check_key(const struct sr_dev_driver *driver,
+		const struct sr_dev_inst *sdi, const struct sr_channel_group *cg,
+		uint32_t key, int op)
+{
+	const struct sr_config_info *srci;
+	gsize num_opts, i;
+	GVariant *gvar_opts;
+	const uint32_t *opts;
+	uint32_t pub_opt;
+	char *suffix, *opstr;
+
+	if (sdi && cg)
+		suffix = " for this device and channel group";
+	else if (sdi)
+		suffix = " for this device";
+	else
+		suffix = "";
+
+	if (!(srci = sr_config_info_get(key))) {
+		sr_err("Invalid key %d.", key);
+		return SR_ERR_ARG;
+	}
+	opstr = op == SR_CONF_GET ? "get" : op == SR_CONF_SET ? "set" : "list";
+	sr_spew("sr_config_%s(): key %d (%s) sdi %p cg %s", opstr, key,
+			srci->id, sdi, cg ? cg->name : "NULL");
+
+	if (sr_config_list(driver, sdi, cg, SR_CONF_DEVICE_OPTIONS, &gvar_opts) != SR_OK) {
+		/* Driver publishes no options. */
+		sr_err("No options available%s.", srci->id, suffix);
+		return SR_ERR_ARG;
+	}
+	opts = g_variant_get_fixed_array(gvar_opts, &num_opts, sizeof(uint32_t));
+	pub_opt = 0;
+	for (i = 0; i < num_opts; i++) {
+		if ((opts[i] & SR_CONF_MASK) == key) {
+			pub_opt = opts[i];
+			break;
+		}
+	}
+	g_variant_unref(gvar_opts);
+	if (!pub_opt) {
+		sr_err("Option '%s' not available%s.", srci->id, suffix);
+		return SR_ERR_ARG;
+	}
+
+	if (!(pub_opt & op)) {
+		sr_err("Option '%s' not available to %s%s.", srci->id, opstr, suffix);
+		return SR_ERR_ARG;
+	}
+
+	return SR_OK;
+}
+
 /**
  * Query value of a configuration key at the given driver or device instance.
  *
@@ -388,6 +507,9 @@ SR_API int sr_config_get(const struct sr_dev_driver *driver,
 		return SR_ERR;
 
 	if (!driver->config_get)
+		return SR_ERR_ARG;
+
+	if (check_key(driver, sdi, cg, key, SR_CONF_GET) != SR_OK)
 		return SR_ERR_ARG;
 
 	if ((ret = driver->config_get(key, data, sdi, cg)) == SR_OK) {
@@ -430,6 +552,8 @@ SR_API int sr_config_set(const struct sr_dev_inst *sdi,
 		ret = SR_ERR;
 	else if (!sdi->driver->config_set)
 		ret = SR_ERR_ARG;
+	else if (check_key(sdi->driver, sdi, cg, key, SR_CONF_SET) != SR_OK)
+		return SR_ERR_ARG;
 	else if ((ret = sr_variant_type_check(key, data)) == SR_OK)
 		ret = sdi->driver->config_set(key, data, sdi, cg);
 
@@ -492,10 +616,14 @@ SR_API int sr_config_list(const struct sr_dev_driver *driver,
 	int ret;
 
 	if (!driver || !data)
-		ret = SR_ERR;
+		return SR_ERR;
 	else if (!driver->config_list)
-		ret = SR_ERR_ARG;
-	else if ((ret = driver->config_list(key, data, sdi, cg)) == SR_OK)
+		return SR_ERR_ARG;
+	else if (key != SR_CONF_SCAN_OPTIONS && key != SR_CONF_DEVICE_OPTIONS) {
+		if (check_key(driver, sdi, cg, key, SR_CONF_LIST) != SR_OK)
+			return SR_ERR_ARG;
+	}
+	if ((ret = driver->config_list(key, data, sdi, cg)) == SR_OK)
 		g_variant_ref_sink(*data);
 
 	return ret;
@@ -538,6 +666,8 @@ SR_API const struct sr_config_info *sr_config_info_name_get(const char *optname)
 	int i;
 
 	for (i = 0; sr_config_info_data[i].key; i++) {
+		if (!sr_config_info_data[i].id)
+			continue;
 		if (!strcmp(sr_config_info_data[i].id, optname))
 			return &sr_config_info_data[i];
 	}
