@@ -264,6 +264,15 @@ AM_CONDITIONAL(NEED_RPC, test "x$have_rpc" != "x0")
 # We require at least 2.34.0 due to e.g. g_slist_deep_copy().
 AM_PATH_GLIB_2_0([2.34.0],
 	[LIB_CFLAGS="$LIB_CFLAGS $GLIB_CFLAGS"; LIBS="$LIBS $GLIB_LIBS"])
+if test "x$no_glib" = "xyes"; then
+#try 2.32.0, and use g_slist_deep_copy conditionally defined in src/session.c
+        AM_PATH_GLIB_2_0([2.32.0],
+	        [LIB_CFLAGS="$LIB_CFLAGS $GLIB_CFLAGS"; LIBS="$LIBS $GLIB_LIBS"])
+        if test "x$no_glib" = "x"; then
+                AC_DEFINE_UNQUOTED(HAVE_OLDER_GLIB_2_0, [1], [We do not have version 2.34.0 of glib2.])
+        fi
+fi
+
 
 # libzip is always needed. Abort if it's not found.
 PKG_CHECK_MODULES([libzip], [libzip >= 0.10],

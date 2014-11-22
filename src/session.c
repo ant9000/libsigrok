@@ -24,6 +24,10 @@
 #include <glib.h>
 #include "libsigrok.h"
 #include "libsigrok-internal.h"
+#if HAVE_OLDER_GLIB_2_0
+GSList*
+g_slist_copy_deep (GSList *list, GCopyFunc func, gpointer user_data);
+#endif
 
 /** @cond PRIVATE */
 #define LOG_PREFIX "session"
@@ -964,6 +968,41 @@ static void *copy_src(struct sr_config *src)
 
 	return new_src;
 }
+
+#if HAVE_OLDER_GLIB_2_0
+GSList*
+g_slist_copy_deep (GSList *list, GCopyFunc func, gpointer user_data)
+{
+  GSList *new_list = NULL;
+
+  if (list)
+    {
+      GSList *last;
+
+      new_list = g_slice_new (GSList);
+      if (func)
+        new_list->data = func (list->data, user_data);
+      else
+        new_list->data = list->data;
+      last = new_list;
+      list = list->next;
+      while (list)
+        {
+          last->next = g_slice_new (GSList);
+          last = last->next;
+          if (func)
+            last->data = func (list->data, user_data);
+          else
+            last->data = list->data;
+          list = list->next;
+        }
+      last->next = NULL;
+    }
+
+  return new_list;
+}
+#endif
+
 
 SR_PRIV int sr_packet_copy(const struct sr_datafeed_packet *packet,
 		struct sr_datafeed_packet **copy)
